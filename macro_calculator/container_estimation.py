@@ -37,12 +37,10 @@ def sample_depth(depth_map, points):
 
 
 # 3. Approximate camera intrinsics
-def create_intrinsics(width, height, fov_deg=70):
-    f = width / (2 * np.tan(np.deg2rad(fov_deg / 2)))
-
+def create_intrinsics(width, height, focal_length):
     return np.array([
-        [f, 0, width / 2],
-        [0, f, height / 2],
+        [focal_length, 0, width / 2],
+        [0, focal_length, height / 2],
         [0, 0, 1]
     ], dtype=np.float64)
 
@@ -165,7 +163,7 @@ def get_visible_dish_points(depth_map, dish_mask, food_mask, K):
 
 
 # 10. Main reconstruction
-def reconstruct_dish(depth_map, ellipse, container_mask, food_mask):
+def reconstruct_dish(depth_map, ellipse, container_mask, food_mask, focal_length):
     h, w = depth_map.shape[:2]
 
     cx, cy, a, b, angle = ellipse
@@ -173,12 +171,9 @@ def reconstruct_dish(depth_map, ellipse, container_mask, food_mask):
     rim_2d = sample_ellipse(cx, cy, a, b, angle)
     rim_2d, rim_depth = sample_depth(depth_map, rim_2d)
 
-    K = create_intrinsics(w, h)
+    K = create_intrinsics(w, h, focal_length)
 
     rim_3d = depth_to_3d(rim_2d, rim_depth, K)
-    
-    print("rim pixels:", len(rim_2d))
-    print("rim 3D:", rim_3d.shape)
 
     normal, _, inliers = fit_plane(rim_3d)
     normal = orient_normal(normal, rim_3d)

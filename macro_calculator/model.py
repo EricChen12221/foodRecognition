@@ -2,15 +2,15 @@ import transformers.dynamic_module_utils
 
 transformers.dynamic_module_utils.check_imports = lambda *args, **kwargs: []
 
-from macro_calculator.rim_detection import RimDetector
-from macro_calculator.container_estimation import reconstruct_dish
-from macro_calculator.food_alignment import associate_foods
-from macro_calculator.calculate_volume import calculate_volumes
+from rim_detection import RimDetector
+from container_estimation import reconstruct_dish
+from food_alignment import associate_foods
+from calculate_volume import calculate_volumes
 
 import torch
 import numpy as np
 from PIL import Image
-from transformers import AutoProcessor, AutoImageProcessor, AutoModelForCausalLM, AutoModelForDepthEstimation
+from transformers import AutoProcessor, AutoModelForCausalLM, DepthProForDepthEstimation, DepthProImageProcessor
 from segment_anything import sam_model_registry, SamPredictor
 
 #FIND FOOD AND SEGMENTATION
@@ -20,7 +20,7 @@ torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", torch_dtype=torch_dtype, trust_remote_code=True).to(device)
 
-image_path = "example.jpg"
+image_path = "yumgrub.jpg"
 image = Image.open(image_path).convert("RGB")
 
 # 1. PASS 1: Get Food Bounding Boxes via standard 
@@ -129,25 +129,33 @@ print(f"Success! Container mask generated + {len(food_masks)} food pixel masks e
 
 
 #DEPTH
-processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
-model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf", device_map="auto").to(device)
+processor = DepthProImageProcessor.from_pretrained("apple/DepthPro-hf")
+model = DepthProForDepthEstimation.from_pretrained("apple/DepthPro-hf", device_map="auto").to(device=device)
 
-image = Image.open("example.jpg").convert("RGB")
+image = Image.open("yumgrub.jpg").convert("RGB")
 
-inputs = processor(images=image, return_tensors="pt").to(device)
+def get_depth(image):
+    inputs = processor(images=image, return_tensors="pt").to(device)
 
-with torch.no_grad():
-    outputs = model(**inputs)
-    predicted_depth = outputs.predicted_depth
+    with torch.no_grad():
+        outputs = model(**inputs)
 
-prediction = torch.nn.functional.interpolate(
-    predicted_depth.unsqueeze(1),
-    size=image.size[::-1],
-    mode="bicubic",
-    align_corners=False,
-).squeeze().cpu().numpy()
+    result = processor.post_process_depth_estimation(
+        outputs,
+        target_sizes=[(image.height, image.width)]
+    )[0]
 
-print("Depth map generated with shape:", prediction.shape)
+    depth = result["predicted_depth"].detach().cpu().numpy()
+
+    focal_length = result["focal_length"].item()
+
+    return depth, focal_length
+
+depth_map, focal_length = get_depth(image)
+
+print(depth_map.shape)
+print(depth_map.min(), depth_map.max())
+print("focal length:", focal_length)
 
 #COMBINE DEPTH AND CONTAINER SEGMENTATION TO ESTIMATE CAMERA PERSPECTIVE
 reconstructed_containers = {}
@@ -159,7 +167,7 @@ for container in container_masks:
         image=image,
         container_box=container["box"],
         container_mask=container["mask"],
-        depth=prediction,
+        depth=depth_map,
     )
 
     rim_detector.draw_result(image, rim)
@@ -168,10 +176,11 @@ for container in container_masks:
     ellipse = (cx, cy, major_axis / 2, minor_axis / 2, angle)
 
     reconstruction = reconstruct_dish(
-        depth_map=prediction,
+        depth_map=depth_map,
         ellipse=ellipse,
         container_mask=container["mask"],
-        food_mask=food_mask
+        food_mask=food_mask,
+        focal_length=focal_length
     )
     print(reconstruction)
     reconstructed_containers[tuple(reconstruction["center"])] = reconstruction
