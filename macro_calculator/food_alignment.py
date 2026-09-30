@@ -66,7 +66,7 @@ def evaluate_food_container(food_points, food_pixels, reconstruction):
     )
 
     height_difference = z - bowl_z
-    food_height = height_difference[inside_volume]
+    food_heights = height_difference[inside_volume]
 
     contained_fraction = np.mean(inside_volume)
 
@@ -80,7 +80,7 @@ def evaluate_food_container(food_points, food_pixels, reconstruction):
         "local_points": local,
         "height_difference": height_difference,
         "food_points": local[inside_volume],
-        "food_height": food_height,
+        "food_heights": food_heights,
         "food_pixels": food_pixels[inside_volume],
     }
 

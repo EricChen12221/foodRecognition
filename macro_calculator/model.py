@@ -10,7 +10,7 @@ from calculate_volume import calculate_volumes
 import torch
 import numpy as np
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForCausalLM, DepthProForDepthEstimation, DepthProImageProcessor
+from transformers import AutoProcessor, AutoModelForCausalLM, AutoImageProcessor, AutoModelForDepthEstimation, DepthProForDepthEstimation, DepthProImageProcessor
 from segment_anything import sam_model_registry, SamPredictor
 
 #FIND FOOD AND SEGMENTATION
@@ -18,21 +18,27 @@ device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
 processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", torch_dtype=torch_dtype, trust_remote_code=True).to(device)
+model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", dtype=torch_dtype, trust_remote_code=True, attn_implementation="eager").to(device)
 
 image_path = "yumgrub.jpg"
 image = Image.open(image_path).convert("RGB")
 
 # 1. PASS 1: Get Food Bounding Boxes via standard 
 prompt = '<OD>'
-inputs = processor(text=prompt, images=image, return_tensors="pt").to(device, torch_dtype)
+
+inputs = processor(text=prompt, images=image, return_tensors="pt")
+
+inputs = {
+    k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
+    for k, v in inputs.items()
+}
 
 generated_ids = model.generate(
     input_ids=inputs["input_ids"],
     pixel_values=inputs["pixel_values"],
     max_new_tokens=1024,
     do_sample=False,
-    num_beams=3,
+    use_cache=False
 )
 
 generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
@@ -49,18 +55,19 @@ def detect_containers(image):
 
     prompt = task + text
 
-    inputs = processor(
-        text=prompt,
-        images=image,
-        return_tensors="pt"
-    ).to(device, torch_dtype)
+    inputs = processor(text=prompt, images=image, return_tensors="pt")
+
+    inputs = {
+        k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
+        for k, v in inputs.items()
+    }
 
     generated_ids = model.generate(
         input_ids=inputs["input_ids"],
         pixel_values=inputs["pixel_values"],
         max_new_tokens=1024,
         do_sample=False,
-        num_beams=3,
+        use_cache=False
     )
 
     generated_text = processor.batch_decode(
@@ -129,33 +136,39 @@ print(f"Success! Container mask generated + {len(food_masks)} food pixel masks e
 
 
 #DEPTH
-processor = DepthProImageProcessor.from_pretrained("apple/DepthPro-hf")
-model = DepthProForDepthEstimation.from_pretrained("apple/DepthPro-hf", device_map="auto").to(device=device)
+
+#depth_processor = DepthProImageProcessor.from_pretrained("apple/DepthPro-hf")
+#depth_model = DepthProForDepthEstimation.from_pretrained("apple/DepthPro-hf").to(device=device)
+
+depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
+
+depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
 
 image = Image.open("yumgrub.jpg").convert("RGB")
 
 def get_depth(image):
-    inputs = processor(images=image, return_tensors="pt").to(device)
+    inputs = depth_processor(images=image, return_tensors="pt").to(device)
 
     with torch.no_grad():
-        outputs = model(**inputs)
+        outputs = depth_model(**inputs)
 
-    result = processor.post_process_depth_estimation(
+    result = depth_processor.post_process_depth_estimation(
         outputs,
-        target_sizes=[(image.height, image.width)]
-    )[0]
+        target_sizes=[(image.height, image.width)])[0]
 
     depth = result["predicted_depth"].detach().cpu().numpy()
 
-    focal_length = result["focal_length"].item()
+    #focal_length = result["focal_length"].item()
 
-    return depth, focal_length
+    #return depth, focal_length
 
-depth_map, focal_length = get_depth(image)
+    return depth
 
+
+#depth_map, focal_length = get_depth(image)
+depth_map = get_depth(image)
 print(depth_map.shape)
 print(depth_map.min(), depth_map.max())
-print("focal length:", focal_length)
 
 #COMBINE DEPTH AND CONTAINER SEGMENTATION TO ESTIMATE CAMERA PERSPECTIVE
 reconstructed_containers = {}
@@ -180,13 +193,12 @@ for container in container_masks:
         ellipse=ellipse,
         container_mask=container["mask"],
         food_mask=food_mask,
-        focal_length=focal_length
+        #focal_length=focal_length
     )
-    print(reconstruction)
+
     reconstructed_containers[tuple(reconstruction["center"])] = reconstruction
 
 #Associate foods with containers
-reconstructed_containers = associate_foods(food_masks, reconstructed_containers, prediction)
+reconstructed_containers, unassociated_foods = associate_foods(food_masks, reconstructed_containers, depth_map)
 
 calculate_volumes(reconstructed_containers)
-
