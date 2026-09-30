@@ -2,10 +2,10 @@ import transformers.dynamic_module_utils
 
 transformers.dynamic_module_utils.check_imports = lambda *args, **kwargs: []
 
-from rim_detection import RimDetector
-from container_estimation import reconstruct_dish
-from food_alignment import associate_foods
-from calculate_volume import calculate_volumes
+from macro_calculator.rim_detection import RimDetector
+from macro_calculator.container_estimation import reconstruct_dish
+from macro_calculator.food_alignment import associate_foods
+from macro_calculator.calculate_volume import calculate_volumes
 
 import torch
 import numpy as np
