@@ -10,6 +10,7 @@ from calculate_volume import calculate_volumes
 import torch
 import numpy as np
 from PIL import Image
+from PIL.ExifTags import TAGS
 from transformers import AutoProcessor, AutoModelForCausalLM, AutoImageProcessor, AutoModelForDepthEstimation, DepthProForDepthEstimation, DepthProImageProcessor
 from segment_anything import sam_model_registry, SamPredictor
 
@@ -136,12 +137,7 @@ print(f"Success! Container mask generated + {len(food_masks)} food pixel masks e
 
 
 #DEPTH
-
-#depth_processor = DepthProImageProcessor.from_pretrained("apple/DepthPro-hf")
-#depth_model = DepthProForDepthEstimation.from_pretrained("apple/DepthPro-hf").to(device=device)
-
 depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
-
 depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
 
 image = Image.open("yumgrub.jpg").convert("RGB")
@@ -158,17 +154,35 @@ def get_depth(image):
 
     depth = result["predicted_depth"].detach().cpu().numpy()
 
-    #focal_length = result["focal_length"].item()
-
-    #return depth, focal_length
-
     return depth
 
 
-#depth_map, focal_length = get_depth(image)
 depth_map = get_depth(image)
 print(depth_map.shape)
 print(depth_map.min(), depth_map.max())
+
+def get_exif(path):
+    image = Image.open(path)
+    exif = image.getexif()
+
+    data = {}
+    for tag_id, value in exif.items():
+        tag = TAGS.get(tag_id, tag_id)
+        data[tag] = value
+
+    return data
+
+
+exif = get_exif("yumgrub.jpg")
+
+print("Camera:", exif.get("Model"))
+print("Focal length:", exif.get("FocalLength"))
+focal_length = exif.get("FocalLengthIn35mmFilm")
+
+if focal_length is None:
+    focal_length = exif.get("FocalLength")
+
+print(focal_length)
 
 #COMBINE DEPTH AND CONTAINER SEGMENTATION TO ESTIMATE CAMERA PERSPECTIVE
 reconstructed_containers = {}
@@ -193,7 +207,7 @@ for container in container_masks:
         ellipse=ellipse,
         container_mask=container["mask"],
         food_mask=food_mask,
-        #focal_length=focal_length
+        focal_length=focal_length
     )
 
     reconstructed_containers[tuple(reconstruction["center"])] = reconstruction
@@ -202,3 +216,4 @@ for container in container_masks:
 reconstructed_containers, unassociated_foods = associate_foods(food_masks, reconstructed_containers, depth_map)
 
 calculate_volumes(reconstructed_containers)
+
