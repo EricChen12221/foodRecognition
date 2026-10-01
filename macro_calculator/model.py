@@ -21,6 +21,17 @@ torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
 model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", dtype=torch_dtype, trust_remote_code=True, attn_implementation="eager").to(device)
 
+model_type = "vit_b"
+checkpoint_path = "sam_vit_b_01ec64.pth"
+
+sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
+sam.to(device=device)
+
+predictor = SamPredictor(sam)
+
+depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
+depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
+
 image_path = "yumgrub.jpg"
 image = Image.open(image_path).convert("RGB")
 
@@ -95,13 +106,6 @@ print("Container boxes:", containers)
 # 3. INITIALIZE SAM AND FEED EVERYTHING IN
 print(f"Using device: {device}")
 
-model_type = "vit_b"
-checkpoint_path = "sam_vit_b_01ec64.pth"
-
-sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
-sam.to(device=device)
-
-predictor = SamPredictor(sam)
 image_rgb = np.array(image)
 predictor.set_image(image_rgb)
 
@@ -137,11 +141,6 @@ print(f"Success! Container mask generated + {len(food_masks)} food pixel masks e
 
 
 #DEPTH
-depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
-depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
-
-image = Image.open("yumgrub.jpg").convert("RGB")
-
 def get_depth(image):
     inputs = depth_processor(images=image, return_tensors="pt").to(device)
 
