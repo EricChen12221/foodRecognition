@@ -48,6 +48,7 @@ def calculate_food_volume(evaluation, food_mask):
     return float(np.sum(height_map[valid] * area[valid]))
 
 def calculate_volumes(reconstructions):
+    foods = []
     for center, reconstruction in reconstructions.items():
         if center == "None":
             continue
@@ -57,3 +58,7 @@ def calculate_volumes(reconstructions):
 
             food["volume_m3"] = volume_m3
             food["volume_ml"] = volume_m3 * 1_000_000
+
+            foods.append({"food_label": food["label"], "volume_ml": food["volume_ml"]})
+
+    return foods

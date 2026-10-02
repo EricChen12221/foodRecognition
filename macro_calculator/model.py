@@ -35,37 +35,9 @@ depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-
 image_path = "yumgrub.jpg"
 image = Image.open(image_path).convert("RGB")
 
-# 1. PASS 1: Get Food Bounding Boxes via standard 
-prompt = '<OD>'
-
-inputs = processor(text=prompt, images=image, return_tensors="pt")
-
-inputs = {
-    k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
-    for k, v in inputs.items()
-}
-
-generated_ids = model.generate(
-    input_ids=inputs["input_ids"],
-    pixel_values=inputs["pixel_values"],
-    max_new_tokens=1024,
-    do_sample=False,
-    use_cache=False
-)
-
-generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-parsed_answer = processor.post_process_generation(generated_text, task=prompt, image_size=image.size)
-
-parsed_food = parsed_answer['<OD>']['bboxes']
-parsed_food_labels = parsed_answer['<OD>']['labels']
-print(f"Detected {len(parsed_food)} food items")
-
-# 2. PASS 2: Get Container Bounding Box
-def detect_containers(image):
-    task = "<OPEN_VOCABULARY_DETECTION>"
-    text = "plate, bowl, cup, dish, or container containing food"
-
-    prompt = task + text
+def getFoods(image):
+    # 1. PASS 1: Get Food Bounding Boxes via standard 
+    prompt = '<OD>'
 
     inputs = processor(text=prompt, images=image, return_tensors="pt")
 
@@ -82,137 +54,174 @@ def detect_containers(image):
         use_cache=False
     )
 
-    generated_text = processor.batch_decode(
-        generated_ids,
-        skip_special_tokens=False
-    )[0]
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+    parsed_answer = processor.post_process_generation(generated_text, task=prompt, image_size=image.size)
 
-    result = processor.post_process_generation(
-        generated_text,
-        task=task,
-        image_size=image.size
-    )
+    parsed_food = parsed_answer['<OD>']['bboxes']
+    parsed_food_labels = parsed_answer['<OD>']['labels']
+    print(f"Detected {len(parsed_food)} food items")
 
-    data = result["<OPEN_VOCABULARY_DETECTION>"]
-    print(data)
+    # 2. PASS 2: Get Container Bounding Box
+    def detect_containers(image):
+        task = "<OPEN_VOCABULARY_DETECTION>"
+        text = "plate, bowl, cup, dish, or container containing food"
 
-    return [{ "box": box } for box in data["bboxes"]]
+        prompt = task + text
 
+        inputs = processor(text=prompt, images=image, return_tensors="pt")
 
-containers = detect_containers(image)
+        inputs = {
+            k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
+            for k, v in inputs.items()
+        }
 
-print("Container boxes:", containers)
+        generated_ids = model.generate(
+            input_ids=inputs["input_ids"],
+            pixel_values=inputs["pixel_values"],
+            max_new_tokens=1024,
+            do_sample=False,
+            use_cache=False
+        )
 
-# 3. INITIALIZE SAM AND FEED EVERYTHING IN
-print(f"Using device: {device}")
+        generated_text = processor.batch_decode(
+            generated_ids,
+            skip_special_tokens=False
+        )[0]
 
-image_rgb = np.array(image)
-predictor.set_image(image_rgb)
+        result = processor.post_process_generation(
+            generated_text,
+            task=task,
+            image_size=image.size
+        )
 
-# Get precise mask for the container (for ellipse fitting / volume baseline)
-container_masks = []
+        data = result["<OPEN_VOCABULARY_DETECTION>"]
+        print(data)
 
-for container in containers:
-    box = np.array(container["box"])
-
-    masks, scores, _ = predictor.predict(
-        box=box,
-        multimask_output=False
-    )
-
-    container_masks.append({
-        "box": container["box"],
-        "mask": masks[0],
-        "score": scores[0]
-    })
-
-# Get precise masks for every food item (for individual macro crop-and-caption workflows)
-food_masks = []
-for i, box in enumerate(parsed_food):
-    masks, scores, _ = predictor.predict(box=np.array(box), multimask_output=False)
-    food_masks.append({
-        'box': box,
-        'mask': masks[0],
-        'score': scores[0],
-        'label': parsed_food_labels[i]
-    })
-
-print(f"Success! Container mask generated + {len(food_masks)} food pixel masks extracted.")
+        return [{ "box": box } for box in data["bboxes"]]
 
 
-#DEPTH
-def get_depth(image):
-    inputs = depth_processor(images=image, return_tensors="pt").to(device)
+    containers = detect_containers(image)
 
-    with torch.no_grad():
-        outputs = depth_model(**inputs)
+    print("Container boxes:", containers)
 
-    result = depth_processor.post_process_depth_estimation(
-        outputs,
-        target_sizes=[(image.height, image.width)])[0]
+    # 3. INITIALIZE SAM AND FEED EVERYTHING IN
+    print(f"Using device: {device}")
 
-    depth = result["predicted_depth"].detach().cpu().numpy()
+    image_rgb = np.array(image)
+    predictor.set_image(image_rgb)
 
-    return depth
+    # Get precise mask for the container (for ellipse fitting / volume baseline)
+    container_masks = []
+
+    for container in containers:
+        box = np.array(container["box"])
+
+        masks, scores, _ = predictor.predict(
+            box=box,
+            multimask_output=False
+        )
+
+        container_masks.append({
+            "box": container["box"],
+            "mask": masks[0],
+            "score": scores[0]
+        })
+
+    # Get precise masks for every food item (for individual macro crop-and-caption workflows)
+    food_masks = []
+    for i, box in enumerate(parsed_food):
+        masks, scores, _ = predictor.predict(box=np.array(box), multimask_output=False)
+        food_masks.append({
+            'box': box,
+            'mask': masks[0],
+            'score': scores[0],
+            'label': parsed_food_labels[i]
+        })
+
+    print(f"Success! Container mask generated + {len(food_masks)} food pixel masks extracted.")
 
 
-depth_map = get_depth(image)
-print(depth_map.shape)
-print(depth_map.min(), depth_map.max())
+    #DEPTH
+    def get_depth(image):
+        inputs = depth_processor(images=image, return_tensors="pt").to(device)
 
-def get_exif(path):
-    image = Image.open(path)
-    exif = image.getexif()
+        with torch.no_grad():
+            outputs = depth_model(**inputs)
 
-    data = {}
-    for tag_id, value in exif.items():
-        tag = TAGS.get(tag_id, tag_id)
-        data[tag] = value
+        result = depth_processor.post_process_depth_estimation(
+            outputs,
+            target_sizes=[(image.height, image.width)])[0]
 
-    return data
+        depth = result["predicted_depth"].detach().cpu().numpy()
+
+        return depth
 
 
-exif = get_exif("yumgrub.jpg")
+    depth_map = get_depth(image)
+    print(depth_map.shape)
+    print(depth_map.min(), depth_map.max())
 
-print("Camera:", exif.get("Model"))
-print("Focal length:", exif.get("FocalLength"))
-focal_length = exif.get("FocalLengthIn35mmFilm")
+    def get_exif(path):
+        image = Image.open(path)
+        exif = image.getexif()
 
-if focal_length is None:
-    focal_length = exif.get("FocalLength")
+        data = {}
+        for tag_id, value in exif.items():
+            tag = TAGS.get(tag_id, tag_id)
+            data[tag] = value
 
-print(focal_length)
+        return data
 
-#COMBINE DEPTH AND CONTAINER SEGMENTATION TO ESTIMATE CAMERA PERSPECTIVE
-reconstructed_containers = {}
-rim_detector = RimDetector()
-food_mask = np.any(np.array([food["mask"] for food in food_masks]), axis=0)
 
-for container in container_masks:
-    rim = rim_detector.detect(
-        image=image,
-        container_box=container["box"],
-        container_mask=container["mask"],
-        depth=depth_map,
-    )
+    exif = get_exif("yumgrub.jpg")
 
-    rim_detector.draw_result(image, rim)
+    print("Camera:", exif.get("Model"))
+    print("Focal length:", exif.get("FocalLength"))
+    focal_length = exif.get("FocalLengthIn35mmFilm")
 
-    (cx, cy), (major_axis, minor_axis), angle = rim["ellipse"]
-    ellipse = (cx, cy, major_axis / 2, minor_axis / 2, angle)
+    if focal_length is None:
+        focal_length = exif.get("FocalLength")
 
-    reconstruction = reconstruct_dish(
-        depth_map=depth_map,
-        ellipse=ellipse,
-        container_mask=container["mask"],
-        food_mask=food_mask,
-        focal_length=focal_length
-    )
+    print(focal_length)
 
-    reconstructed_containers[tuple(reconstruction["center"])] = reconstruction
+    #COMBINE DEPTH AND CONTAINER SEGMENTATION TO ESTIMATE CAMERA PERSPECTIVE
+    reconstructed_containers = {}
+    rim_detector = RimDetector()
+    food_mask = np.any(np.array([food["mask"] for food in food_masks]), axis=0)
 
-#Associate foods with containers
-reconstructed_containers, unassociated_foods = associate_foods(food_masks, reconstructed_containers, depth_map)
+    for container in container_masks:
+        rim = rim_detector.detect(
+            image=image,
+            container_box=container["box"],
+            container_mask=container["mask"],
+            depth=depth_map,
+        )
 
-calculate_volumes(reconstructed_containers)
+        rim_detector.draw_result(image, rim)
+
+        (cx, cy), (major_axis, minor_axis), angle = rim["ellipse"]
+        ellipse = (cx, cy, major_axis / 2, minor_axis / 2, angle)
+
+        reconstruction = reconstruct_dish(
+            depth_map=depth_map,
+            ellipse=ellipse,
+            container_mask=container["mask"],
+            food_mask=food_mask,
+            focal_length=focal_length
+        )
+
+        reconstructed_containers[tuple(reconstruction["center"])] = reconstruction
+
+    #Associate foods with containers
+    reconstructed_containers, unassociated_foods = associate_foods(food_masks, reconstructed_containers, depth_map)
+
+    print("Unassociated_foods", unassociated_foods)
+
+    foods = calculate_volumes(reconstructed_containers)
+
+    return foods
+
+foods = getFoods(image)
+
+print(foods)
 
