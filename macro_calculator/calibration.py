@@ -1,5 +1,5 @@
 import numpy as np
-from dish_reconstruction import reconstruct_dish
+from container_estimation import reconstruct_dish
 
 PLATE_DIAMETER_M = 0.26
 
@@ -27,9 +27,8 @@ def check_scale_from_ellipse(ellipse_full_axes_px, focal_px, known_diameter_m=PL
     return focal_px * known_diameter_m / d_px
 
 
-# ---------------------------------------------------------------------------
 # Scale without a hard-coded size: container-class prior + optional user value
-# ---------------------------------------------------------------------------
+
 # (typical, min, max) OUTER diameter in meters. Approximate figures for common
 # US tableware; replace with measurements of the dishes your users actually have.
 CONTAINER_PRIORS = {

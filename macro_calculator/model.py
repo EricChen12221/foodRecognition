@@ -3,9 +3,7 @@ import transformers.dynamic_module_utils
 transformers.dynamic_module_utils.check_imports = lambda *args, **kwargs: []
 
 from rim_detection import RimDetector
-from container_estimation import reconstruct_dish
-from food_alignment import assign_foods
-from calculate_volume import calculate_volumes
+from pipeline import measure_meal
 
 import torch
 import numpy as np
@@ -33,10 +31,9 @@ predictor = SamPredictor(sam)
 depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
 depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
 
-image_path = "yumgrub.jpg"
-image = Image.open(image_path).convert("RGB")
+def getFoods(path, plate_diameter_m=None):
+    image = Image.open(path).convert("RGB")
 
-def getFoods(image):
     # 1. PASS 1: Get Food Bounding Boxes via standard 
     prompt = '<OD>'
 
@@ -63,45 +60,41 @@ def getFoods(image):
     print(f"Detected {len(parsed_food)} food items")
 
     # 2. PASS 2: Get Container Bounding Box
-    def detect_containers(image):
-        task = "<OPEN_VOCABULARY_DETECTION>"
-        text = "plate, bowl, cup, dish, or container containing food"
+    task = "<OPEN_VOCABULARY_DETECTION>"
+    text = "plate, bowl, cup, dish, or container containing food"
 
-        prompt = task + text
+    prompt = task + text
 
-        inputs = processor(text=prompt, images=image, return_tensors="pt")
+    inputs = processor(text=prompt, images=image, return_tensors="pt")
 
-        inputs = {
-            k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
-            for k, v in inputs.items()
-        }
+    inputs = {
+        k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
+        for k, v in inputs.items()
+    }
 
-        generated_ids = model.generate(
-            input_ids=inputs["input_ids"],
-            pixel_values=inputs["pixel_values"],
-            max_new_tokens=1024,
-            do_sample=False,
-            use_cache=False
-        )
+    generated_ids = model.generate(
+        input_ids=inputs["input_ids"],
+        pixel_values=inputs["pixel_values"],
+        max_new_tokens=1024,
+        do_sample=False,
+        use_cache=False
+    )
 
-        generated_text = processor.batch_decode(
-            generated_ids,
-            skip_special_tokens=False
-        )[0]
+    generated_text = processor.batch_decode(
+        generated_ids,
+        skip_special_tokens=False
+    )[0]
 
-        result = processor.post_process_generation(
-            generated_text,
-            task=task,
-            image_size=image.size
-        )
+    result = processor.post_process_generation(
+        generated_text,
+        task=task,
+        image_size=image.size
+    )
 
-        data = result["<OPEN_VOCABULARY_DETECTION>"]
-        print(data)
+    data = result["<OPEN_VOCABULARY_DETECTION>"]
+    print(data)
 
-        return [{ "box": box } for box in data["bboxes"]]
-
-
-    containers = detect_containers(image)
+    containers =  [{ "box": box } for box in data["bboxes"]]
 
     print("Container boxes:", containers)
 
@@ -141,107 +134,44 @@ def getFoods(image):
 
     print(f"Success! Container mask generated + {len(food_masks)} food pixel masks extracted.")
 
+    #DEPTH  (pass the PIL image, not the filename)
+    r = estimate_depth(path, max_side=768, cache_dir=".depth_cache")
+    depth_map, focal_length = r["depth"], r["focal_px"]
+    print(depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length)
 
-    #DEPTH
-    def get_depth(image):
-
-        """
-        inputs = depth_processor(images=image, return_tensors="pt").to(device)
-
-        with torch.no_grad():
-            outputs = depth_model(**inputs)
-
-        result = depth_processor.post_process_depth_estimation(
-            outputs,
-            target_sizes=[(image.height, image.width)])[0]
-
-        depth = result["predicted_depth"].detach().cpu().numpy()
-        """
-        depth = estimate_depth(image)
-
-        return depth
-
-
-    r = estimate_depth("yumgrub.jpg", max_side=768, cache_dir=".depth_cache")    
-    depth_map = r["depth"]
-    focal_length = r["focal_px"]
-
-    print(depth_map.shape)
-    print(depth_map.min(), depth_map.max())
-
-    """
-    def get_exif(path):
-        image = Image.open(path)
-        exif = image.getexif()
-
-        data = {}
-        for tag_id, value in exif.items():
-            tag = TAGS.get(tag_id, tag_id)
-            data[tag] = value
-
-        return data
-
-
-    exif = get_exif("yumgrub.jpg")
-
-    print("Camera:", exif.get("Model"))
-    print("Focal length:", exif.get("FocalLength"))
-    focal_length = exif.get("FocalLengthIn35mmFilm")
-
-    if focal_length is None:
-        focal_length = exif.get("FocalLength")
-
-    print(focal_length)
-    """
-
-    #COMBINE DEPTH AND CONTAINER SEGMENTATION TO ESTIMATE CAMERA PERSPECTIVE
-    reconstructed_containers = {}
+    #RIMS
     rim_detector = RimDetector()
-    food_mask = np.any(np.array([food["mask"] for food in food_masks]), axis=0)
+    containers_in = []
+    for i, container in enumerate(container_masks):
+        rim = rim_detector.detect(image=image,
+                                container_box=container["box"],
+                                container_mask=container["mask"],
+                                depth=depth_map)
+        if rim is None:
+            print(f"Container {i}: no rim found, skipping")
+            continue
+        print(f"Container {i}: valid={rim['valid']} conf={rim['confidence']:.2f} "
+            f"arc={rim['arc_coverage']:.2f}")
+        rim_detector.draw_result(image, rim).save(f"rim_debug_{i}.jpg")
 
-    for container in container_masks:
-        rim = rim_detector.detect(
-            image=image,
-            container_box=container["box"],
-            container_mask=container["mask"],
-            depth=depth_map,
-        )
+        containers_in.append({
+            "key": f"container_{i}",
+            "rim": rim,
+            "mask": container["mask"],
+            "container_class": "dinner_plate",
+            "known_diameter_m": plate_diameter_m,     # new argument, None = class prior
+        })
 
-        rim_detector.draw_result(image, rim)
+    # the largest ellipse sets the scale
+    containers_in.sort(key=lambda c: -c["rim"]["major_axis"])
 
-        (cx, cy), (major_axis, minor_axis), angle = rim["ellipse"]
-        ellipse = (cx, cy, major_axis / 2, minor_axis / 2, angle)
+    #SCALE, RECONSTRUCT, ASSIGN, VOLUMES
+    result = measure_meal(depth_map, focal_length, containers_in, food_masks)
 
-        reconstruction = reconstruct_dish(
-            depth_map=depth_map,
-            ellipse=ellipse,
-            container_mask=container["mask"],
-            food_mask=food_mask,
-            focal_length=focal_length
-        )
+    print("scale:", result["scale_info"])
+    print("unassigned foods:", len(result["unassigned"]))
+    return result["foods"]
 
-        reconstructed_containers[tuple(reconstruction["center"])] = reconstruction
-
-    #Associate foods with containers
-    assigned = assign_foods(food_masks, reconstructed_containers, depth_map)
-    unassociated_foods = [f for f in assigned if f["container"] == "None"]
-
-    print(len(unassociated_foods))
-
-    foods = calculate_volumes(reconstructed_containers)
-
-    food = assigned[0]
-    ev = food["eval"]
-    rec = reconstructed_containers[food["container"]]
-    print("rim R (m):", rec["profile"]["rim_radius"])
-    print("food area (cm2):", ev["food_areas"].sum() * 1e4)
-    print("mean h (cm):", ev["food_heights"].mean() * 100,
-        "max h (cm):", ev["food_heights"].max() * 100)
-    print("axis:", rec["axis"])
-
-    return foods
-
-foods = getFoods(image)
+foods = getFoods("yumgrub.jpg")
 
 print(foods)
-
