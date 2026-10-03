@@ -4,7 +4,7 @@ transformers.dynamic_module_utils.check_imports = lambda *args, **kwargs: []
 
 from rim_detection import RimDetector
 from container_estimation import reconstruct_dish
-from food_alignment import associate_foods
+from food_alignment import assign_foods
 from calculate_volume import calculate_volumes
 
 import torch
@@ -213,15 +213,14 @@ def getFoods(image):
         reconstructed_containers[tuple(reconstruction["center"])] = reconstruction
 
     #Associate foods with containers
-    reconstructed_containers, unassociated_foods = associate_foods(food_masks, reconstructed_containers, depth_map)
+    assigned = assign_foods(food_masks, reconstructed_containers, depth_map)
+    unassociated_foods = [f for f in assigned if f["container"] == "None"]
 
-    print("Unassociated_foods", unassociated_foods)
+    print(len(unassociated_foods))
 
     foods = calculate_volumes(reconstructed_containers)
-
     return foods
 
 foods = getFoods(image)
 
 print(foods)
-

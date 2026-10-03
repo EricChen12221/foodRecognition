@@ -1,137 +1,106 @@
 import numpy as np
+from scipy.ndimage import binary_erosion
+from container_estimation import to_dish_coordinates, evaluate_profile, depth_to_3d
 
-def depth_to_points(mask, depth, K):
+
+def evaluate_food_container(food_points, reconstruction, food_pixels=None,
+                            tol_frac=0.03, max_height_frac=1.0):
     """
-    Convert masked depth pixels into 3D camera-coordinate points.
+    Relate one food's camera-frame points to ONE container. No volume is
+    computed here; calculate_food_volume does that from the returned arrays.
     """
-    ys, xs = np.where(mask)
-
-    z = depth[ys, xs]
-
-    # Remove invalid depth
-    valid = np.isfinite(z) & (z > 0)
-
-    xs = xs[valid]
-    ys = ys[valid]
-    z = z[valid]
-
-    fx, fy = K[0, 0], K[1, 1]
-    cx, cy = K[0, 2], K[1, 2]
-
-    x = (xs - cx) * z / fx
-    y = (ys - cy) * z / fy
-
-    points = np.column_stack((x, y, z))
-    pixels = np.column_stack((xs, ys))
-
-    return points, pixels
-
-
-def transform_to_container_frame(points, center, basis):
-    """
-    Transform camera/world points into the container's local frame.
-    """
-    centered = points - center
-
-    # Equivalent to basis.T @ centered for each point
-    return centered @ basis
-
-def evaluate_food_container(food_points, food_pixels, reconstruction):
-    center = reconstruction["center"]
-    basis = reconstruction["basis"]
+    K = reconstruction["K"]
     profile = reconstruction["profile"]
-    rim_3d = reconstruction["rim_3d"]
+    R = profile["rim_radius"]
+    tol = tol_frac * R
 
-    local = transform_to_container_frame(food_points, center, basis)
+    local = to_dish_coordinates(food_points, reconstruction["center"],
+                                reconstruction["basis"])
+    r = np.hypot(local[:, 0], local[:, 1])
+    height = local[:, 2] - evaluate_profile(profile, np.minimum(r, R))
 
-    x = local[:, 0]
-    y = local[:, 1]
-    z = local[:, 2]
+    # Footprint of each pixel on the dish's horizontal plane
+    d = food_points / np.linalg.norm(food_points, axis=1, keepdims=True)
+    pix_area = food_points[:, 2] ** 2 / (K[0, 0] * K[1, 1])
+    area = pix_area * np.abs(d[:, 2]) / np.maximum(np.abs(d @ reconstruction["axis"]), 1e-3)
 
-    r = np.sqrt(x**2 + y**2)
+    # Inside this container: within the rim laterally and at a plausible height
+    # (not far below the bowl surface, not absurdly high above it).
+    inside = (r <= R) & (height > -tol) & (height < max_height_frac * R)
 
-    rim_local = transform_to_container_frame(rim_3d, center, basis)
-
-    rim_r = np.sqrt(rim_local[:, 0]**2 + rim_local[:, 1]**2)
-
-    rim_radius = np.max(rim_r)
-    rim_z = np.mean(rim_local[:, 2])
-
-    bowl_z = np.polyval(profile, r)
-
-    inside_volume = (
-        (r <= rim_radius) &
-        (z >= bowl_z - 0.02) &
-        (z <= rim_z + 0.02)
-    )
-
-    height_difference = z - bowl_z
-    food_heights = height_difference[inside_volume]
-
-    contained_fraction = np.mean(inside_volume)
-
+    pixels = None if food_pixels is None else np.asarray(food_pixels)
     return {
-        "contained_fraction": contained_fraction,
-        "inside_volume": inside_volume,
-        "radius": r,
-        "bowl_z": bowl_z,
-        "rim_radius": rim_radius,
-        "rim_z": rim_z,
-        "local_points": local,
-        "height_difference": height_difference,
-        "food_points": local[inside_volume],
-        "food_heights": food_heights,
-        "food_pixels": food_pixels[inside_volume],
+        "contained_fraction": area[inside].sum() / max(area.sum(), 1e-12),
+        "inside_mask": inside,
+        "food_points": local[inside],          # dish frame
+        "food_heights": np.clip(height[inside], 0, None),
+        "food_areas": area[inside],
+        "food_pixels": None if pixels is None else pixels[inside],
     }
 
-def associate_foods(food_masks, reconstructions, depth, threshold=0.9, margin=0.15):
-    unassociated_foods = []
 
-    for food in food_masks:
-        best_container = None
-        best_score = -1
-        best_eval = None
-        second_best_score = -1
+def assign_food_to_container(food_points, reconstructions, food_pixels=None,
+                             min_fraction=0.5):
+    """
+    reconstructions: {container_key: reconstruction}. Returns (key, evaluation)
+    for the container holding the largest share of the food, or ("None", None)
+    if no container holds at least min_fraction of it.
+    """
+    best_key, best_eval = "None", None
+    best_frac = min_fraction
+    for key, rec in reconstructions.items():
+        if key == "None":
+            continue
+        ev = evaluate_food_container(food_points, rec, food_pixels)
+        if ev["contained_fraction"] >= best_frac:
+            best_key, best_eval, best_frac = key, ev, ev["contained_fraction"]
+    return best_key, best_eval
 
-        for center, reconstruction in reconstructions.items():
 
-            # Use the K belonging to this reconstruction
-            K = reconstruction["K"]
+def mask_to_points(mask, depth_map, K, erode_px=0):
+    """Food mask -> (camera-frame points, pixels), one per valid masked pixel."""
+    m = mask > 0
+    if erode_px:
+        m = binary_erosion(m, iterations=erode_px)   # trims depth bleed at the edge
+    v, u = np.where(m & np.isfinite(depth_map) & (depth_map > 0))
+    pixels = np.column_stack([u, v])
+    return depth_to_3d(pixels, depth_map[v, u], K), pixels
 
-            # Convert food mask to 3D using this reconstruction's camera
-            food_points, food_pixels = depth_to_points(food["mask"], depth, K)
 
-            evaluation = evaluate_food_container(food_points, food_pixels, reconstruction)
+def assign_foods(foods, reconstructions, depth_map, min_fraction=0.5, erode_px=0):
+    """
+    foods: list of dicts, each with at least "mask" (and usually "label").
+    reconstructions: {container_key: reconstruction}, all from the same image.
 
-            score = evaluation["contained_fraction"]
+    Each food is assigned to its best container. Returns the foods as new dicts
+    carrying the original info plus:
+        container  key of the assigned container ("None" if none fits)
+        eval       evaluation dict from evaluate_food_container (None if "None")
+        contained_fraction
+    Foods are also stored in reconstructions[key]["foods"], which is what
+    calculate_volumes reads. Unassigned foods go under reconstructions["None"].
+    """
+    real = {k: r for k, r in reconstructions.items() if k != "None"}
+    for rec in reconstructions.values():
+        rec["foods"] = []                      # makes repeated calls safe
+    reconstructions.setdefault("None", {"foods": []})
 
-            if score > best_score:
-                second_best_score = best_score
-                best_score = score
-                best_container = center
-                best_eval = evaluation
+    results = []
+    if not real:
+        K = None
+    else:
+        K = next(iter(real.values()))["K"]     # same camera for every container
 
-            elif score > second_best_score:
-                second_best_score = score
-
-        if (
-            best_container is not None
-            and best_score >= threshold
-            and best_score - second_best_score >= margin
-        ):
-            reconstructions[best_container]["foods"].append({
-                **food,
-                "eval": best_eval,
-                "association_score": best_score,
-                "second_best_score": second_best_score,
-            })
-
-        else:
-            unassociated_foods.append({
-                **food,
-                "eval": best_eval,
-                "association_score": best_score,
-                "second_best_score": second_best_score,
-            })
-
-    return reconstructions, unassociated_foods
+    for food in foods:
+        entry = dict(food)
+        key, ev = "None", None
+        if K is not None:
+            points, pixels = mask_to_points(food["mask"], depth_map, K, erode_px)
+            if len(points) >= 4:
+                key, ev = assign_food_to_container(points, real, pixels, min_fraction)
+        entry["container"] = key
+        entry["eval"] = ev
+        entry["contained_fraction"] = None if ev is None else ev["contained_fraction"]
+        reconstructions[key]["foods"].append(entry)
+        results.append(entry)
+    return results
