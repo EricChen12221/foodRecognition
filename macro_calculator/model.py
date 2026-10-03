@@ -13,13 +13,14 @@ from PIL import Image
 from PIL.ExifTags import TAGS
 from transformers import AutoProcessor, AutoModelForCausalLM, AutoImageProcessor, AutoModelForDepthEstimation, DepthProForDepthEstimation, DepthProImageProcessor
 from segment_anything import sam_model_registry, SamPredictor
+from depth_estimation import estimate_depth
 
 #FIND FOOD AND SEGMENTATION
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
 processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", dtype=torch_dtype, trust_remote_code=True, attn_implementation="eager").to(device)
+model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", torch_dtype=torch_dtype, trust_remote_code=True, attn_implementation="eager").to(device)
 
 model_type = "vit_b"
 checkpoint_path = "sam_vit_b_01ec64.pth"
@@ -143,6 +144,8 @@ def getFoods(image):
 
     #DEPTH
     def get_depth(image):
+
+        """
         inputs = depth_processor(images=image, return_tensors="pt").to(device)
 
         with torch.no_grad():
@@ -153,14 +156,20 @@ def getFoods(image):
             target_sizes=[(image.height, image.width)])[0]
 
         depth = result["predicted_depth"].detach().cpu().numpy()
+        """
+        depth = estimate_depth(image)
 
         return depth
 
 
-    depth_map = get_depth(image)
+    r = estimate_depth("yumgrub.jpg", max_side=768, cache_dir=".depth_cache")    
+    depth_map = r["depth"]
+    focal_length = r["focal_px"]
+
     print(depth_map.shape)
     print(depth_map.min(), depth_map.max())
 
+    """
     def get_exif(path):
         image = Image.open(path)
         exif = image.getexif()
@@ -183,6 +192,7 @@ def getFoods(image):
         focal_length = exif.get("FocalLength")
 
     print(focal_length)
+    """
 
     #COMBINE DEPTH AND CONTAINER SEGMENTATION TO ESTIMATE CAMERA PERSPECTIVE
     reconstructed_containers = {}
@@ -219,8 +229,19 @@ def getFoods(image):
     print(len(unassociated_foods))
 
     foods = calculate_volumes(reconstructed_containers)
+
+    food = assigned[0]
+    ev = food["eval"]
+    rec = reconstructed_containers[food["container"]]
+    print("rim R (m):", rec["profile"]["rim_radius"])
+    print("food area (cm2):", ev["food_areas"].sum() * 1e4)
+    print("mean h (cm):", ev["food_heights"].mean() * 100,
+        "max h (cm):", ev["food_heights"].max() * 100)
+    print("axis:", rec["axis"])
+
     return foods
 
 foods = getFoods(image)
 
 print(foods)
+
