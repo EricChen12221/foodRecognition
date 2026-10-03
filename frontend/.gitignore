@@ -1,25 +1,3 @@
-venv/
-*.pth
-*.pt
-*.ckpt
-*.onnx
-*.safetensors
-models/moge_env/
-.depth_cache/
-__pycache__/
-*.pyc
-.DS_Store
-moge_env/
-.depth_cache/
-__pycache__/
-*.pyc
-.DS_Store
-moge_env/
-.depth_cache/
-__pycache__/
-*.pyc
-.DS_Store
-
 # OSX
 #
 .DS_Store
