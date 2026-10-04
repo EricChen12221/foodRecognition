@@ -170,8 +170,7 @@ def getFoods(path, plate_diameter_m=None):
 
     print("scale:", result["scale_info"])
     print("unassigned foods:", len(result["unassigned"]))
+    print("dropped foods:", result["dropped"])
     return result["foods"]
 
 foods = getFoods("yumgrub.jpg")
-
-print(foods)
