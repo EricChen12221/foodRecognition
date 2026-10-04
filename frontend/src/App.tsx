@@ -1,77 +1,145 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React, { useEffect } from 'react';
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View, Text } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import {Camera, useCameraDevice, useCameraPermission,} from 'react-native-vision-camera';
+import CameraIcon from './assets/CameraIcon.tsx'
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  Linking,
+  StatusBar,
+  StyleSheet,
+  useColorScheme,
+  View,
+  Text,
+  Button,
+  TouchableOpacity,
+} from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  usePhotoOutput,
+} from 'react-native-vision-camera';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
   const device = useCameraDevice('back');
+  const photoOutput = usePhotoOutput({});
   const { hasPermission, requestPermission } = useCameraPermission();
 
-  if (!hasPermission) {
-    return (
-      <View>
-        <Text>Camera permission is required.</Text>
+  const [useCam, setUseCam] = useState(false);
 
-        {/* Add a button here to call requestPermission() */}
-      </View>
-    );
-  }
+  const openCamera = async () => {
+    if (hasPermission) {
+      setUseCam(true);
+      return;
+    }
 
-  if (device == null) {
-    return (
-      <View>
-        <Text>No camera available</Text>
-      </View>
-    );
-  }
+    const granted = await requestPermission();
+    if (granted) {
+      setUseCam(true);
+    } else {
+      Alert.alert(
+        'Camera access needed',
+        'Turn on camera access in Settings to take photos.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+    }
+  };
 
-  if (device == null) {
+  const takePhoto = async () => {
+    try {
+      const { filePath } = await photoOutput.capturePhotoToFile({}, {});
+      console.log('Photo saved at:', filePath);
+    } catch (e) {
+      console.log('Failed to take photo', e);
+    }
+  };
+
+  if (useCam) {
+    if (device == null) {
+      return (
+        <View style={styles.centered}>
+          <Text style={styles.text}>No camera available</Text>
+          <Button title="Close" onPress={() => setUseCam(false)} />
+        </View>
+      );
+    }
+
     return (
-      <View>
-        <Text>No camera available</Text>
-      </View>
+      <SafeAreaProvider>
+        <StatusBar barStyle="light-content" />
+        <Camera
+          style={StyleSheet.absoluteFill}
+          device={device}
+          isActive={true}
+          outputs={[photoOutput]}
+        />
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePhoto} />
+        </View>
+        <View style={styles.closeContainer}>
+          <Button title="Close" color="white" onPress={() => setUseCam(false)} />
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
-      <Camera
-        style={{ flex: 1 }}
+      {useCam && device && <Camera
+        style={StyleSheet.absoluteFill}
         device={device}
         isActive={true}
-      />
+        outputs={[photoOutput]}
+      />}
+      {!useCam && <View style={styles.buttonContainer}>
+      <TouchableOpacity style={styles.captureButton} onPress={openCamera}>
+        <CameraIcon size={48} color="black" fillColor="white" />
+      </TouchableOpacity>
+    </View>}
     </SafeAreaProvider>
   );
 }
 
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: {
+  centered: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  text: {
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  buttonContainer: {
+    position: 'absolute',
+    bottom: 50,
+    width: '100%',
+    alignItems: 'center',
+  },
+  closeContainer: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+  },
+  captureButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'black',
+    borderWidth: 5,
+    borderColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 8,
   },
 });
 
