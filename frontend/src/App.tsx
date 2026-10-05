@@ -1,4 +1,3 @@
-import CameraIcon from './assets/CameraIcon.tsx'
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -18,6 +17,18 @@ import {
   useCameraPermission,
   usePhotoOutput,
 } from 'react-native-vision-camera';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+
+import ProfileScreen from './ProfileScreen.tsx'
+import TrackerScreen from './TrackerScreen.tsx'
+
+import { floatingTabBar } from './tabBarStyle';
+
+import { TrackerIcon, ProfileIcon } from './assets/TabIcons';
+import CameraIcon from './assets/CameraIcon.tsx'
+
+const Tab = createBottomTabNavigator();
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -95,6 +106,32 @@ function App() {
 
   return (
     <SafeAreaProvider>
+      <NavigationContainer>
+        <Tab.Navigator
+          screenOptions={{
+            headerShown: false,
+            tabBarActiveTintColor: 'black',
+            tabBarItemStyle: { justifyContent: 'center' },
+            tabBarStyle: floatingTabBar,
+            tabBarLabelStyle: { fontSize: 14, fontWeight: '600' },
+          }}
+        >
+          <Tab.Screen
+            name="Tracker"
+            component={TrackerScreen}
+            options={{
+              tabBarIcon: ({ color, size }) => <TrackerIcon color={color} size={size} />,
+            }}
+          />
+          <Tab.Screen
+            name="Profile"
+            component={ProfileScreen}
+            options={{
+              tabBarIcon: ({ color, size }) => <ProfileIcon color={color} size={size} />,
+            }}
+          />
+        </Tab.Navigator>
+      </NavigationContainer>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
       {useCam && device && <Camera
         style={StyleSheet.absoluteFill}
