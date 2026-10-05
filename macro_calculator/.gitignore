@@ -1,0 +1,56 @@
+# --- Python virtual environments (never commit these) ---
+moge_env/
+venv/
+.venv/
+env/
+ENV/
+
+# --- Python cache and build files ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+
+# --- Depth cache and debug output ---
+.depth_cache/
+rim_debug_*.jpg
+rim_debug_*.png
+plate_fit.jpg
+*.npz
+
+# --- Model weights and checkpoints (large; download them instead) ---
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.onnx
+*.bin
+*.h5
+checkpoints/
+weights/
+models/
+
+# --- Hugging Face and other local caches ---
+.cache/
+huggingface/
+
+# --- Secrets and local config ---
+.env
+.env.*
+*.key
+secrets.json
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Editors and OS files ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
