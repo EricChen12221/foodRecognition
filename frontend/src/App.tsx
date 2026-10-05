@@ -60,12 +60,18 @@ function App() {
 
   if (useCam) {
     if (device == null) {
-      return (
-        <View style={styles.centered}>
-          <Text style={styles.text}>No camera available</Text>
-          <Button title="Close" onPress={() => setUseCam(false)} />
-        </View>
+      Alert.alert(
+        'Camera Unavailable',
+        'We couldn\’t access a camera on this device. You can continue without using the camera.',
+        [
+          {
+            text: 'Continue',
+            style: 'default',
+          },
+        ],
       );
+      setUseCam(false)
+      return
     }
 
     return (
@@ -97,7 +103,7 @@ function App() {
         outputs={[photoOutput]}
       />}
       {!useCam && <View style={styles.buttonContainer}>
-      <TouchableOpacity style={styles.captureButton} onPress={openCamera}>
+      <TouchableOpacity style={styles.useCamButton} onPress={openCamera}>
         <CameraIcon size={48} color="black" fillColor="white" />
       </TouchableOpacity>
     </View>}
@@ -123,16 +129,37 @@ const styles = StyleSheet.create({
   },
   closeContainer: {
     position: 'absolute',
-    top: 60,
-    right: 20,
+    top: 0,
+    right: 0,
+    width: '100%',
+    height: '110',
+    backgroundColor: 'rgba(2, 2, 2, 0.6)',
+    alignItems: 'flex-end',
+    paddingRight: '10',
+    paddingTop: '65'
+  },
+  useCamButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(2, 2, 2, 0.93)',
+    borderWidth: 5,
+    borderColor: 'rgba(3, 3, 3, 0.93)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 8,
   },
   captureButton: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'black',
+    backgroundColor: 'rgba(230, 229, 229, 0.93)',
     borderWidth: 5,
-    borderColor: 'rgba(0, 0, 0, 0.3)',
+    borderColor: 'rgba(230, 229, 229, 0.93)',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
