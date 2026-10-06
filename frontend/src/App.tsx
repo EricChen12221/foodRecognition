@@ -7,6 +7,7 @@ import {
   useColorScheme,
   View,
   Text,
+  Image,
   Button,
   TouchableOpacity,
 } from 'react-native';
@@ -19,9 +20,10 @@ import {
 } from 'react-native-vision-camera';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { PhotoFile } from 'react-native-vision-camera';
 
-import ProfileScreen from './ProfileScreen.tsx'
-import TrackerScreen from './TrackerScreen.tsx'
+import ProfileScreen from './screens/ProfileScreen.tsx'
+import TrackerScreen from './screens/TrackerScreen.tsx'
 
 import { floatingTabBar } from './tabBarStyle';
 
@@ -38,6 +40,9 @@ function App() {
   const { hasPermission, requestPermission } = useCameraPermission();
 
   const [useCam, setUseCam] = useState(false);
+  const [photoTaken, setPhotoTaken] = useState(false);
+
+  const [filePath, setFilePath] = useState<PhotoFile | undefined>()
 
   const openCamera = async () => {
     if (hasPermission) {
@@ -62,8 +67,9 @@ function App() {
 
   const takePhoto = async () => {
     try {
-      const { filePath } = await photoOutput.capturePhotoToFile({}, {});
+      setFilePath(await photoOutput.capturePhotoToFile({}, {}));
       console.log('Photo saved at:', filePath);
+      setPhotoTaken(true)
     } catch (e) {
       console.log('Failed to take photo', e);
     }
@@ -84,24 +90,54 @@ function App() {
       setUseCam(false)
       return
     }
-
-    return (
-      <SafeAreaProvider>
-        <StatusBar barStyle="light-content" />
-        <Camera
-          style={StyleSheet.absoluteFill}
-          device={device}
-          isActive={true}
-          outputs={[photoOutput]}
-        />
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.captureButton} onPress={takePhoto} />
-        </View>
-        <View style={styles.closeContainer}>
-          <Button title="Close" color="white" onPress={() => setUseCam(false)} />
-        </View>
-      </SafeAreaProvider>
-    );
+    if (!photoTaken) {
+      return (
+        <SafeAreaProvider>
+          <StatusBar barStyle="light-content" />
+          <Camera
+            style={StyleSheet.absoluteFill}
+            device={device}
+            isActive={true}
+            outputs={[photoOutput]}
+          />
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={styles.captureButton} onPress={takePhoto} />
+          </View>
+          <View style={styles.closeContainer}>
+            <Button title="Close" color="white" onPress={() => setUseCam(false)} />
+          </View>
+        </SafeAreaProvider>
+      );
+    } else {
+      return (
+        <>
+          {filePath && (
+            <SafeAreaProvider>
+              <StatusBar barStyle="light-content" />
+              <Image
+                source={{ uri: `file://${filePath}` }}
+                style={{ width: 300, height: 300 }}
+                resizeMode="contain"
+              />
+              <View style={styles.buttonContainer}>
+                <TouchableOpacity style={styles.captureButton} onPress={takePhoto} />
+              </View>
+              <View style={styles.closeContainer}>
+                <Button
+                  title="Close"
+                  color="white"
+                  onPress={() => {
+                    setUseCam(false);
+                    setPhotoTaken(false);
+                    setFilePath(undefined);
+                  }}
+                />
+              </View>
+            </SafeAreaProvider>
+          )}
+        </>
+      );
+    }
   }
 
   return (
