@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 // Sample typed route handler
-app.get('/', (req: Request, res: Response) => {
+app.get('/', (_, res: Response) => {
   res.json({ message: 'Welcome to your TypeScript backend!' });
 });
 
