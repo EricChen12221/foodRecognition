@@ -24,6 +24,7 @@ import type { PhotoFile } from 'react-native-vision-camera';
 
 import ProfileScreen from './screens/ProfileScreen.tsx'
 import TrackerScreen from './screens/TrackerScreen.tsx'
+import MealScreen from './screens/MealScreen.tsx'
 
 import { floatingTabBar } from './tabBarStyle';
 
@@ -43,6 +44,7 @@ function App() {
   const [photoTaken, setPhotoTaken] = useState(false);
 
   const [filePath, setFilePath] = useState<PhotoFile | undefined>()
+  const [imageChosen, setImageChosen] = useState(false)
 
   const openCamera = async () => {
     if (hasPermission) {
@@ -116,13 +118,32 @@ function App() {
               <StatusBar barStyle="light-content" />
               <Image
                 source={{ uri: `file://${filePath}` }}
-                style={{ width: 300, height: 300 }}
+                style={{ width: '100%', height: '100%' }}
                 resizeMode="contain"
               />
               <View style={styles.buttonContainer}>
                 <TouchableOpacity style={styles.captureButton} onPress={takePhoto} />
               </View>
               <View style={styles.closeContainer}>
+                <Button
+                  title="Use"
+                  color="white"
+                  onPress={() => {
+                    setUseCam(false);
+                    setPhotoTaken(false);
+                    setFilePath(undefined);
+                    setImageChosen(true)
+                  }}
+                />
+                <Button
+                  title="Retake"
+                  color="yellow"
+                  onPress={() => {
+                    setUseCam(true);
+                    setPhotoTaken(false);
+                    setFilePath(undefined);
+                  }}
+                />
                 <Button
                   title="Close"
                   color="white"
@@ -134,10 +155,16 @@ function App() {
                 />
               </View>
             </SafeAreaProvider>
-          )}
+          )}\
         </>
       );
     }
+  }
+
+  if (imageChosen && filePath) {
+    return (
+      MealScreen(filePath)
+    )
   }
 
   return (
