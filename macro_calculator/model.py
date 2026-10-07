@@ -31,7 +31,7 @@ predictor = SamPredictor(sam)
 depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
 depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
 
-def getFoods(path, plate_diameter_m=None):
+def getFoodsAndContainers(path):
     image = Image.open(path).convert("RGB")
 
     # 1. PASS 1: Get Food Bounding Boxes via standard 
@@ -134,7 +134,10 @@ def getFoods(path, plate_diameter_m=None):
 
     print(f"Success! Container mask generated + {len(food_masks)} food pixel masks extracted.")
 
+def estimateVolume(food_masks, container_masks, path, plate_diameter_m=None):
     #DEPTH  (pass the PIL image, not the filename)
+    image = Image.open(path).convert("RGB")
+
     r = estimate_depth(path, max_side=768, cache_dir=".depth_cache")
     depth_map, focal_length = r["depth"], r["focal_px"]
     print(depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length)
@@ -173,4 +176,6 @@ def getFoods(path, plate_diameter_m=None):
     print("dropped foods:", result["dropped"])
     return result["foods"]
 
-foods = getFoods("yumgrub.jpg")
+
+foods, containers = getFoodsAndContainers("yumgrub.jpg")
+volumes = estimateVolume(foods, containers, "yumgrub.jpg")
