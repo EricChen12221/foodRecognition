@@ -163,8 +163,12 @@ function App() {
 
   if (imageChosen && filePath) {
     return (
-      MealScreen(filePath)
-    )
+    <MealScreen
+      key={filePath.filePath}
+      path={filePath.filePath}
+      onCancel={() => setImageChosen(false)}
+    />
+  );
   }
 
   return (
