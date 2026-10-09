@@ -1,3 +1,5 @@
+import 'react-native-gesture-handler'; // first line
+
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -117,14 +119,10 @@ function App() {
             <SafeAreaProvider>
               <StatusBar barStyle="light-content" />
               <Image
-                source={{ uri: `file://${filePath}` }}
+                source={{ uri: `file://${filePath.filePath}` }}
                 style={{ width: '100%', height: '100%' }}
-                resizeMode="contain"
               />
-              <View style={styles.buttonContainer}>
-                <TouchableOpacity style={styles.captureButton} onPress={takePhoto} />
-              </View>
-              <View style={styles.closeContainer}>
+              <View style={styles.useContainer}>
                 <Button
                   title="Use"
                   color="white"
@@ -137,22 +135,24 @@ function App() {
                 />
                 <Button
                   title="Retake"
-                  color="yellow"
+                  color="rgb(253, 209, 77)"
                   onPress={() => {
                     setUseCam(true);
                     setPhotoTaken(false);
                     setFilePath(undefined);
                   }}
                 />
-                <Button
-                  title="Close"
-                  color="white"
-                  onPress={() => {
-                    setUseCam(false);
-                    setPhotoTaken(false);
-                    setFilePath(undefined);
-                  }}
-                />
+                <View style={styles.closeLastItem}>
+                  <Button
+                    title="Close"
+                    color="white"
+                    onPress={() => {
+                      setUseCam(false);
+                      setPhotoTaken(false);
+                      setFilePath(undefined);
+                    }}
+                  />
+                </View>
               </View>
             </SafeAreaProvider>
           )}\
@@ -241,6 +241,24 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingRight: '10',
     paddingTop: '65'
+  },
+  closeLastItem: {
+    marginLeft: 'auto',
+  },
+  useContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    alignItems: 'center',
+    display: 'flex',
+    flexDirection: 'row',
+    gap: '15',
+    width: '100%',
+    height: '110',
+    backgroundColor: 'rgba(2, 2, 2, 0.6)',
+    paddingRight: '10',
+    paddingLeft: '15',
+    paddingTop: '65',
   },
   useCamButton: {
     width: 80,

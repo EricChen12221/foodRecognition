@@ -16,8 +16,9 @@
     "@react-navigation/native": "^7.5.0",
     "react": "19.2.3",
     "react-native": "0.87.1",
+    "react-native-gesture-handler": "^3.3.0",
     "react-native-nitro-modules": "^0.37.1",
-    "react-native-safe-area-context": "^5.5.2",
+    "react-native-safe-area-context": "^5.10.1",
     "react-native-screens": "^4.28.0",
     "react-native-svg": "^15.15.5",
     "react-native-vision-camera": "^5.2.3"
