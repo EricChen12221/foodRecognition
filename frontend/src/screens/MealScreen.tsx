@@ -1,48 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View, Text, Pressable, ScrollView, Image, StyleSheet } from 'react-native';
+import { ActivityIndicator, View, Text, Pressable, Image, StyleSheet } from 'react-native';
 import { useAsyncTask } from './helpers/useAsyncTask';
+
+import macroHelper from '../services/macro.ts'
 import MultiSelect from '../components/MultiSelect.tsx'
-
-const API_URL = 'https://your-server.example.com';   // TODO: your backend
-
-export interface DetectedContainer {
-  id: string;
-  suggestedClass?: string;       // e.g. 'dinner_plate'
-}
-export interface DetectedFood {
-  id: string;
-  label: string;
-  containerId: string | null;
-  volume_ml?: number | null;
-  volume_ml_low?: number | null;
-  volume_ml_high?: number | null;
-}
-export interface AnalysisResult {
-  containers: DetectedContainer[];
-  foods: DetectedFood[];
-}
-
-/** Camera libraries often return a bare path ("/var/.../photo.jpg"); fetch needs a scheme. */
-export function toFileUri(pathOrUri: string): string {
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(pathOrUri) ? pathOrUri : `file://${pathOrUri}`;
-}
-
-async function analyzeMeal(
-  signal: AbortSignal,
-  imageUri: string,
-  plateDiameterM?: number,
-): Promise<AnalysisResult> {
-  const form = new FormData();
-  // React Native accepts a { uri, name, type } object here. Do not set Content-Type yourself;
-  // fetch adds the multipart boundary.
-  form.append('image', { uri: imageUri, name: 'meal.jpg', type: 'image/jpeg' } as unknown as Blob);
-
-  if (plateDiameterM) form.append('plate_diameter_m', String(plateDiameterM));
-
-  const res = await fetch(`${API_URL}/analyze`, { method: 'POST', body: form, signal });
-  if (!res.ok) throw new Error(`Server error (${res.status}).`);
-  return (await res.json()) as AnalysisResult;
-}
 
 function LoadingView({ onCancel }: { onCancel: () => void }) {
   const [seconds, setSeconds] = useState(0);
@@ -94,7 +55,7 @@ export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
   plateDiameterM?: number;       // e.g. 0.26 once the user confirms the plate size
   onCancel: () => void;          // e.g. navigation.goBack
 }) {
-  const { status, data, error, run, cancel } = useAsyncTask(analyzeMeal);
+  const { status, data, error, run, cancel } = useAsyncTask(macroHelper.analyzeMeal);
   
   const [radialProfiles, setRadialProfiles] = useState(standIns);
   const [selectedIds, setSelectedIds] = useState<(string | number)[]>([]);

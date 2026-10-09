@@ -129,7 +129,6 @@ function App() {
                   onPress={() => {
                     setUseCam(false);
                     setPhotoTaken(false);
-                    setFilePath(undefined);
                     setImageChosen(true)
                   }}
                 />
@@ -166,7 +165,7 @@ function App() {
     <MealScreen
       key={filePath.filePath}
       path={filePath.filePath}
-      onCancel={() => setImageChosen(false)}
+      onCancel={() => { setImageChosen(false); setFilePath(undefined); }}
     />
   );
   }
