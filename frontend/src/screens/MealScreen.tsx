@@ -63,8 +63,8 @@ export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
   const [max, setMax] = useState(1)
 
   useEffect(() => {
-    run(path, plateDiameterM);
-  }, [path, plateDiameterM, run]);
+    run(path);
+  }, [path, run]);
 
   const handleCancel = () => {
     cancel();
@@ -78,7 +78,7 @@ export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
     return (
       <ErrorView
         message={error ?? 'No result was returned.'}
-        onRetry={() => run(path, plateDiameterM)}
+        onRetry={() => run(path)}
         onCancel={handleCancel}
       />
     );
