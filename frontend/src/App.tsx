@@ -154,7 +154,7 @@ function App() {
                 </View>
               </View>
             </SafeAreaProvider>
-          )}\
+          )}
         </>
       );
     }
