@@ -132,7 +132,10 @@ def getFoodsAndContainers(path):
             'label': parsed_food_labels[i]
         })
 
+     
     print(f"Success! Container mask generated + {len(food_masks)} food pixel masks extracted.")
+
+    return food_masks, container_masks
 
 def estimateVolume(food_masks, container_masks, path, plate_diameter_m=None):
     #DEPTH  (pass the PIL image, not the filename)
@@ -177,5 +180,5 @@ def estimateVolume(food_masks, container_masks, path, plate_diameter_m=None):
     return result["foods"]
 
 
-foods, containers = getFoodsAndContainers("yumgrub.jpg")
-volumes = estimateVolume(foods, containers, "yumgrub.jpg")
+#foods, containers = getFoodsAndContainers("yumgrub.jpg")
+#volumes = estimateVolume(foods, containers, "yumgrub.jpg")

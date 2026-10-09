@@ -64,7 +64,7 @@ def create_app():
     from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
     from typing import Optional
 
-    from model import getFoods      # imported here so the models load once, at startup
+    from model import getFoodsAndContainers      # imported here so the models load once, at startup
 
     app = FastAPI()
     lock = threading.Lock()         # SAM's predictor keeps global state: one request at a time
@@ -87,8 +87,8 @@ def create_app():
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         with lock:
-            foods = getFoods(img, plate_diameter_m=plate_diameter_m)
-        return serialize_foods(foods)
+            foods, containers = getFoodsAndContainers(img, plate_diameter_m=plate_diameter_m)
+        return {"foods": serialize_foods(foods), "containers": containers }
 
     return app
 
