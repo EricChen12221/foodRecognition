@@ -31,8 +31,8 @@ predictor = SamPredictor(sam)
 depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
 depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
 
-def getFoodsAndContainers(path):
-    image = Image.open(path).convert("RGB")
+def getFoodsAndContainers(image):
+    image = image.convert("RGB")
 
     # 1. PASS 1: Get Food Bounding Boxes via standard 
     prompt = '<OD>'

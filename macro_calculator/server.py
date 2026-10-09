@@ -13,6 +13,13 @@ import threading
 import numpy as np
 from PIL import Image, ImageOps
 
+# Optional: lets Pillow open HEIC photos if pillow-heif is installed.
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
+
 
 def load_upload(data: bytes) -> Image.Image:
     """Uploaded bytes -> upright RGB PIL image.
@@ -39,35 +46,37 @@ def _py(v):
 
 
 def serialize_foods(foods):
-    """Keep only what the app needs; masks and eval arrays are far too large for JSON."""
-    out_foods, container_ids = [], []
+    """Keep only what the app needs; masks are far too large for JSON."""
+    out = []
     for i, f in enumerate(foods):
-        cid = f.get("container")
-        cid = None if cid in (None, "None") else str(cid)
-        if cid is not None and cid not in container_ids:
-            container_ids.append(cid)
-        out_foods.append({
+        out.append({
             "id": f"food_{i}",
             "label": f.get("label"),
-            "containerId": cid,
             "box": [float(x) for x in f.get("box", [])],
             "score": _py(f.get("score")),
-            "contained_fraction": _py(f.get("contained_fraction")),
-            "volume_ml": _py(f.get("volume_ml")),
-            "volume_ml_low": _py(f.get("volume_ml_low")),
-            "volume_ml_high": _py(f.get("volume_ml_high")),
         })
-    return {"containers": [{"id": c} for c in container_ids], "foods": out_foods}
+    return out
+
+
+def serialize_containers(containers):
+    return [
+        {
+            "id": f"container_{i}",
+            "box": [float(x) for x in c.get("box", [])],
+            "score": _py(c.get("score")),
+        }
+        for i, c in enumerate(containers)
+    ]
 
 
 def create_app():
-    from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+    from fastapi import FastAPI, File, Header, HTTPException, UploadFile
     from typing import Optional
 
-    from model import getFoodsAndContainers      # imported here so the models load once, at startup
+    from model import getFoodsAndContainers  # imported here so the models load once, at startup
 
     app = FastAPI()
-    lock = threading.Lock()         # SAM's predictor keeps global state: one request at a time
+    lock = threading.Lock()  # SAM's predictor keeps global state: one request at a time
 
     @app.get("/health")
     def health():
@@ -76,26 +85,31 @@ def create_app():
     @app.post("/analyze")
     def analyze(
         image: UploadFile = File(...),
-        plate_diameter_m: Optional[float] = Form(None),
-        x_internal_key: Optional[str] = Header(None),     # header "x-internal-key"
+        x_internal_key: Optional[str] = Header(None),  # header "x-internal-key"
     ):
-        expected = os.environ.get("PYTHON_API_KEY")        # unset = no check (local dev)
+        expected = os.environ.get("PYTHON_API_KEY")  # unset = no check (local dev)
         if expected and not hmac.compare_digest(x_internal_key or "", expected):
             raise HTTPException(status_code=401, detail="Invalid internal key.")
+
         try:
             img = load_upload(image.file.read())
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+
         with lock:
-            foods, containers = getFoodsAndContainers(img, plate_diameter_m=plate_diameter_m)
-        return {"foods": serialize_foods(foods), "containers": containers }
+            foods, containers = getFoodsAndContainers(img)
+
+        return {
+            "foods": serialize_foods(foods),
+            "containers": serialize_containers(containers),
+        }
 
     return app
 
 
 try:
     import fastapi  # noqa: F401
-except ImportError:                 # fastapi not installed: the helpers above still import
+except ImportError:  # fastapi not installed: the helpers above still import
     app = None
 else:
     # Any error from model.py (missing package, bad path, ...) now shows up as itself
