@@ -1,6 +1,6 @@
 python3.11 -m venv moge_env
 source moge_env/bin/activate
-pip install torch torchvision numpy scipy opencv-python click pillow huggingface_hub matplotlib trimesh
+pip install torch torchvision numpy scipy opencv-python click pillow huggingface_hub matplotlib trimesh fastapi
 pip install "transformers==4.49.0" einops timm
 pip install git+https://github.com/facebookresearch/segment-anything.git
 pip install --no-deps git+https://github.com/EasternJournalist/utils3d.git
