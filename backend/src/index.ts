@@ -25,15 +25,6 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
     return;
   }
 
-  let plateDiameterM: number | undefined;
-  if (req.body?.plate_diameter_m !== undefined && req.body.plate_diameter_m !== '') {
-    plateDiameterM = Number(req.body.plate_diameter_m);
-    if (!Number.isFinite(plateDiameterM) || plateDiameterM < 0.05 || plateDiameterM > 0.6) {
-      res.status(400).json({ error: 'plate_diameter_m must be between 0.05 and 0.6 (meters).' });
-      return;
-    }
-  }
-
   // If the phone gives up, stop waiting on Python too.
   const clientGone = new AbortController();
   res.on('close', () => {
@@ -44,7 +35,6 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
     const result = await python.analyzeMeal(
       req.file.buffer,
       req.file.mimetype,
-      plateDiameterM,
       clientGone.signal,
     );
     res.json(result);

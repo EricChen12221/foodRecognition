@@ -49,12 +49,10 @@ export function createPythonClient({ baseUrl, timeoutMs = 180000, apiKey }: Pyth
   async function analyzeMeal(
     image: Uint8Array,                 // a Node Buffer works
     mimeType: string,
-    plateDiameterM?: number,
     signal?: AbortSignal,              // abort when your own client disconnects
   ): Promise<AnalyzeResponse> {
     const form = new FormData();
     form.append('image', new Blob([new Uint8Array(image)], { type: mimeType }), 'meal.jpg');
-    if (plateDiameterM !== undefined) form.append('plate_diameter_m', String(plateDiameterM));
 
     // With exactOptionalPropertyTypes a property must be left out, not set to undefined.
     const headers: Record<string, string> = {};
