@@ -1,9 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View, Text, Pressable, Image, StyleSheet } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useAsyncTask } from './helpers/useAsyncTask';
 
-import macroHelper from '../services/macro.ts'
-import MultiSelect from '../components/MultiSelect.tsx'
+import macroHelper from '../services/macro.ts';
+import ContainerProfileList, { type Container } from '../components/ContainerProfileList.tsx';
 
 function LoadingView({ onCancel }: { onCancel: () => void }) {
   const [seconds, setSeconds] = useState(0);
@@ -46,21 +55,28 @@ function ErrorView({ message, onRetry, onCancel }: {
 }
 
 const standIns = [
-  { id: '1', name: 'Plate', diameter: '28' },
-  { id: '2', name: 'Bowl', diameter: '20' },
-]
+  { id: '1', label: 'Plate', diameter: '28' },
+  { id: '2', label: 'Bowl', diameter: '20' },
+];
 
 export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
-  path: string;              // pass toFileUri(photo.<your path field>)
-  plateDiameterM?: number;       // e.g. 0.26 once the user confirms the plate size
-  onCancel: () => void;          // e.g. navigation.goBack
+  path: string;              
+  plateDiameterM?: number;   
+  onCancel: () => void;      
 }) {
   const { status, data, error, run, cancel } = useAsyncTask(macroHelper.analyzeMeal);
-  
-  const [radialProfiles, setRadialProfiles] = useState(standIns);
-  const [selectedIds, setSelectedIds] = useState<(string | number)[]>([]);
-    
-  const [max, setMax] = useState(1)
+  const [radialProfiles] = useState(standIns);
+
+  // The user's profile pick per container id, merged onto the detected containers.
+  const [choices, setChoices] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  useEffect(() => { setChoices({}); }, [data]);
+
+  const containers: Container[] = (data?.containers ?? []).map((c: Container) => ({
+    ...c,
+    radial_profile: choices[c.id],
+  }));
+  const allChosen = containers.length > 0 && containers.every((c) => c.radial_profile);
 
   useEffect(() => {
     run(path);
@@ -70,6 +86,24 @@ export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
     cancel();
     onCancel();
   };
+
+  async function handleEstimate() {
+    if (!data) return;
+    setSubmitting(true);
+    try {
+      const { volumes } = await macroHelper.estimateMeal(
+        data.session_id,
+        containers.map(({ id, radial_profile }) => ({ id, radial_profile })),
+        plateDiameterM,
+      );
+      // TODO: show or navigate with `volumes`
+      console.log(volumes);
+    } catch (e) {
+      Alert.alert("Couldn't estimate portions", e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   if (status === 'idle' || status === 'loading') {
     return <LoadingView onCancel={handleCancel} />;
@@ -84,45 +118,78 @@ export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
     );
   }
 
-  // Success: containers and foods are here. Put your selection UI
-  // (one Picker per container, food list, ...) in place of this list.
   return (
-    <>
-      <View style={styles.container}>
-        <Text style={styles.text}>Log Meal</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.screenContent}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={styles.title}>Log meal</Text>
+
+      <View style={styles.photoCard}>
+        <Image
+          source={{ uri: `file://${path}` }}
+          style={styles.photo}
+          resizeMode="cover"
+        />
       </View>
-      <Image
-        source={{ uri: `file://${path}` }}
-        style={{ width: 300, height: 300 }}
-        resizeMode="contain"
-      />
-      <View style={styles.container}>
-        <Text style={styles.text}>Add Plateware Profiles</Text>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Plateware profiles</Text>
+        <Text style={styles.sectionHint}>
+          Choose the profile for each plate, bowl, or cup so portions are measured accurately.
+        </Text>
+
+        {containers.length === 0 ? (
+          <Text style={styles.sectionHint}>No plates detected.</Text>
+        ) : (
+          <ContainerProfileList
+            containers={containers}
+            profiles={radialProfiles}
+            onChoose={(cid, pid) => setChoices((prev) => ({ ...prev, [cid]: pid }))}
+          />
+        )}
       </View>
-      <View style={styles.pickerContainer}>
-        <MultiSelect items={radialProfiles} value={selectedIds} onChange={setSelectedIds} max={max} />
-      </View>
-    </>
+
+      <Pressable
+        style={[styles.primary, (!allChosen || submitting) && styles.primaryDisabled]}
+        disabled={!allChosen || submitting}
+        onPress={handleEstimate}
+        accessibilityRole="button"
+      >
+        <Text style={styles.primaryText}>{submitting ? 'Estimating…' : 'Estimate portions'}</Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
-  content: { padding: 16, gap: 8 },
-  title: { fontSize: 18, fontWeight: '600', textAlign: 'center' },
-  spaced: { marginTop: 16 },
   hint: { fontSize: 14, color: '#666', textAlign: 'center' },
-  row: { fontSize: 16, paddingVertical: 6 },
   primary: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8, backgroundColor: '#14634b' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  primaryDisabled: { opacity: 0.4 },
   secondary: { paddingHorizontal: 20, paddingVertical: 10 },
   secondaryText: { color: '#14634b', fontSize: 16 },
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  text: { fontSize: 20 },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginTop: 8,
+
+  screen: { flex: 1, backgroundColor: '#f6f7f4', paddingTop: 30 },
+  screenContent: { padding: 20, paddingBottom: 40, gap: 20 },
+
+  title: { fontSize: 28, fontWeight: '700', color: '#1b2420' },
+
+  photoCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#e6ebe7',
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
+  photo: { width: '100%', aspectRatio: 4 / 3 },
+
+  section: { gap: 6 },
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: '#1b2420' },
+  sectionHint: { fontSize: 14, lineHeight: 20, color: '#66706b' },
 });
