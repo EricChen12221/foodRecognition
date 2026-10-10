@@ -7,7 +7,7 @@ Run (from macro_calculator, with moge_env active):
 """
 import hmac
 import io
-import os
+import os, time
 import threading
 
 import numpy as np
@@ -73,10 +73,21 @@ def create_app():
     from fastapi import FastAPI, File, Header, HTTPException, UploadFile
     from typing import Optional
 
-    from model import getFoodsAndContainers  # imported here so the models load once, at startup
+    from model import getFoodsAndContainers, estimateVolume  # imported here so the models load once, at startup
 
     app = FastAPI()
     lock = threading.Lock()  # SAM's predictor keeps global state: one request at a time
+
+    def warm_up():
+        path = os.path.join(os.path.dirname(__file__), "yumgrub.jpg")
+        t = time.perf_counter()
+        img = load_upload(open(path, "rb").read())   # same path real uploads take
+        foods, containers = getFoodsAndContainers(img)
+        estimateVolume(foods, containers, img)
+        print(f"Warm-up finished in {time.perf_counter() - t:.1f}s")
+
+    with lock:
+        warm_up()
 
     @app.get("/health")
     def health():
@@ -91,8 +102,9 @@ def create_app():
         if expected and not hmac.compare_digest(x_internal_key or "", expected):
             raise HTTPException(status_code=401, detail="Invalid internal key.")
 
+        raw = image.file.read()
         try:
-            img = load_upload(image.file.read())
+            img = load_upload(raw)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 

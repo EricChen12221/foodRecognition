@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from PIL import Image
 from PIL.ExifTags import TAGS
-from transformers import AutoProcessor, AutoModelForCausalLM, AutoImageProcessor, AutoModelForDepthEstimation, DepthProForDepthEstimation, DepthProImageProcessor
+from transformers import AutoProcessor, AutoModelForCausalLM
 from segment_anything import sam_model_registry, SamPredictor
 from depth_estimation import estimate_depth
 
@@ -28,9 +28,6 @@ sam.to(device=device)
 
 predictor = SamPredictor(sam)
 
-depth_processor = AutoImageProcessor.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf")
-depth_model = AutoModelForDepthEstimation.from_pretrained("depth-anything/Depth-Anything-V2-Metric-Indoor-Small-hf").to(device)
-
 def getFoodsAndContainers(image):
     image = image.convert("RGB")
 
@@ -47,9 +44,11 @@ def getFoodsAndContainers(image):
     generated_ids = model.generate(
         input_ids=inputs["input_ids"],
         pixel_values=inputs["pixel_values"],
-        max_new_tokens=1024,
+        max_new_tokens=512,
+        num_beams=1,
+        early_stopping=False,
         do_sample=False,
-        use_cache=False
+        use_cache=True
     )
 
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
@@ -75,9 +74,11 @@ def getFoodsAndContainers(image):
     generated_ids = model.generate(
         input_ids=inputs["input_ids"],
         pixel_values=inputs["pixel_values"],
-        max_new_tokens=1024,
+        max_new_tokens=512,
+        num_beams=1,
+        early_stopping=False,
         do_sample=False,
-        use_cache=False
+        use_cache=True
     )
 
     generated_text = processor.batch_decode(
@@ -137,11 +138,11 @@ def getFoodsAndContainers(image):
 
     return food_masks, container_masks
 
-def estimateVolume(food_masks, container_masks, path, plate_diameter_m=None):
+def estimateVolume(food_masks, container_masks, image, plate_diameter_m=None):
     #DEPTH  (pass the PIL image, not the filename)
-    image = Image.open(path).convert("RGB")
+    image = image.convert("RGB")
 
-    r = estimate_depth(path, max_side=768, cache_dir=".depth_cache")
+    r = estimate_depth(np.array(image), max_side=768, cache_dir=".depth_cache")
     depth_map, focal_length = r["depth"], r["focal_px"]
     print(depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length)
 
