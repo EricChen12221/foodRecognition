@@ -138,7 +138,7 @@ def getFoodsAndContainers(image):
 
     return food_masks, container_masks
 
-def estimateVolume(food_masks, container_masks, image, plate_diameter_m=None):
+def estimateVolume(food_masks, container_masks, image, plate_diameter_m=None, radial_profiles=None):
     #DEPTH  (pass the PIL image, not the filename)
     image = image.convert("RGB")
 

@@ -10,7 +10,6 @@ Two-stage flow:
        ... user reviews detections and enters radial profiles in the app ...
     2. POST /estimate  (session_id, radial_profiles) -> depth + volumes
 """
-import hmac
 import io
 import os
 import threading
@@ -31,6 +30,22 @@ except ImportError:
 
 SESSION_TTL_S = 15 * 60  # how long stage-1 results stay available for stage 2
 
+
+import base64
+
+def crop_thumb(img, box, size=160):
+    if len(box) != 4:
+        return None
+    x1, y1, x2, y2 = [int(v) for v in box]
+    x1, y1 = max(x1, 0), max(y1, 0)
+    x2, y2 = min(x2, img.width), min(y2, img.height)
+    if x2 - x1 < 2 or y2 - y1 < 2:
+        return None
+    crop = img.crop((x1, y1, x2, y2))
+    crop.thumbnail((size, size))
+    buf = io.BytesIO()
+    crop.save(buf, format="JPEG", quality=80)
+    return base64.b64encode(buf.getvalue()).decode()
 
 def load_upload(data: bytes) -> Image.Image:
     """Uploaded bytes -> upright, resized RGB PIL image.
@@ -84,20 +99,20 @@ def serialize_foods(foods):
     return out
 
 
-def serialize_containers(containers):
+def serialize_containers(containers, img):
     return [
         {
             "id": f"container_{i}",
             "box": [float(x) for x in c.get("box", [])],
             "score": _py(c.get("score")),
+            "thumbnail": crop_thumb(img, c.get("box", []))
         }
         for i, c in enumerate(containers)
     ]
 
 
 def create_app():
-    from fastapi import FastAPI, File, Header, HTTPException, UploadFile
-    from pydantic import BaseModel
+    from fastapi import Body, FastAPI, File, HTTPException, UploadFile
     from typing import Any, Dict, Optional
 
     from model import getFoodsAndContainers, estimateVolume  # imported here so the models load once, at startup
@@ -105,17 +120,6 @@ def create_app():
     app = FastAPI()
     lock = threading.Lock()  # SAM's predictor keeps global state: one request at a time
     sessions = {}            # session_id -> {"created", "image", "foods", "containers"}
-
-    class EstimateRequest(BaseModel):
-        session_id: str
-        # food id (e.g. "food_0") -> that food's radial profile, exactly as the app sends it
-        radial_profiles: Dict[str, Any] = {}
-        plate_diameter_m: Optional[float] = None
-
-    def check_key(x_internal_key):
-        expected = os.environ.get("PYTHON_API_KEY")  # unset = no check (local dev)
-        if expected and not hmac.compare_digest(x_internal_key or "", expected):
-            raise HTTPException(status_code=401, detail="Invalid internal key.")
 
     def purge_old_sessions():
         now = time.time()
@@ -144,12 +148,7 @@ def create_app():
 
     # ---- Stage 1: detection + segmentation -------------------------------------------
     @app.post("/analyze")
-    def analyze(
-        image: UploadFile = File(...),
-        x_internal_key: Optional[str] = Header(None),  # header "x-internal-key"
-    ):
-        check_key(x_internal_key)
-
+    def analyze(image: UploadFile = File(...)):
         raw = image.file.read()
         try:
             img = load_upload(raw)
@@ -165,25 +164,30 @@ def create_app():
         sessions[session_id] = {
             "created": time.time(),
             "image": img,
+            "foods": foods,
+            "containers": containers,
         }
 
         return {
             "session_id": session_id,
             "foods": serialize_foods(foods),
-            "containers": serialize_containers(containers),
+            "containers": serialize_containers(containers, img),
         }
 
     # ---- Stage 2: depth + volume, using the user's radial profiles -------------------
     @app.post("/estimate")
-    def estimate(req: EstimateRequest, x_internal_key: Optional[str] = Header(None)):
-        check_key(x_internal_key)
-
-        s = sessions.get(req.session_id)
+    def estimate(
+        session_id: str = Body(...),
+        # food id (e.g. "food_0") -> that food's radial profile, exactly as the app sends it
+        radial_profiles: Dict[str, Any] = Body(default={}),
+        plate_diameter_m: Optional[float] = Body(default=None),
+    ):
+        s = sessions.get(session_id)
         if s is None:
             raise HTTPException(status_code=404, detail="Session expired or unknown. Re-upload the photo.")
 
         valid_ids = {f"food_{i}" for i in range(len(s["foods"]))}
-        unknown = set(req.radial_profiles) - valid_ids
+        unknown = set(radial_profiles) - valid_ids
         if unknown:
             raise HTTPException(status_code=400, detail=f"Unknown food ids: {sorted(unknown)}")
 
@@ -191,8 +195,8 @@ def create_app():
             with lock, torch.inference_mode():
                 volumes = estimateVolume(
                     s["foods"], s["containers"], s["image"],
-                    plate_diameter_m=req.plate_diameter_m,
-                    radial_profiles=req.radial_profiles,
+                    plate_diameter_m=plate_diameter_m,
+                    radial_profiles=radial_profiles,
                 )
         except Exception as e:
             traceback.print_exc()
