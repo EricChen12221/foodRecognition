@@ -4,6 +4,9 @@ import { createPythonClient, PythonServiceError } from './pythonClient';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
+const PYTHON_URL = process.env.PYTHON_URL ?? 'http://127.0.0.1:8000';
+const PYTHON_TIMEOUT_MS = Number(process.env.PYTHON_TIMEOUT_MS ?? 180000);
+
 const python = createPythonClient({
   baseUrl: process.env.PYTHON_URL ?? 'http://127.0.0.1:8000',
   apiKey: process.env.PYTHON_API_KEY,
@@ -37,6 +40,7 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
       req.file.mimetype,
       clientGone.signal,
     );
+    console.log(result)
     res.json(result);
   } catch (e) {
     if (e instanceof PythonServiceError) {
@@ -45,6 +49,30 @@ app.post('/api/analyze', upload.single('image'), async (req, res) => {
     }
     console.error(e);
     res.status(500).json({ error: 'Unexpected server error.' });
+  }
+});
+
+app.post('/api/estimate', express.json(), async (req, res) => {
+  const { session_id, containers } = req.body ?? {};
+  if (!session_id || !Array.isArray(containers)) {
+    return res.status(400).json({ detail: 'session_id and containers are required.' });
+  }
+
+  try {
+    const upstream = await fetch(`${PYTHON_URL}/estimate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.PYTHON_API_KEY ? { 'x-internal-key': process.env.PYTHON_API_KEY } : {}),
+      },
+      body: JSON.stringify({ session_id, containers }),
+      signal: AbortSignal.timeout(PYTHON_TIMEOUT_MS),
+    });
+    const body = await upstream.json().catch(() => ({}));
+    res.status(upstream.status).json(body);               // keeps 404 (expired session), 400, 500
+  } catch (e) {
+    console.log(e)
+    res.status(502).json({ detail: 'Could not reach the analysis server.' });
   }
 });
 
