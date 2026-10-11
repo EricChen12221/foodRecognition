@@ -22,31 +22,10 @@ export interface AnalysisResult {
   foods: DetectedFood[];
 }
 
-async function estimateMeal(
-  sessionId: string,
-  containers: { id: string; radial_profile?: string }[],
-  plateDiameterM?: number,
-) {
-  const res = await fetch(`${API_URL}/estimate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      session_id: sessionId,
-      containers,
-      plate_diameter_m: plateDiameterM,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Estimate failed (${res.status})`);
-  }
-  return res.json(); // { volumes: ... }
-}
 async function analyzeMeal(
   signal: AbortSignal,
   imageUri: string,
 ): Promise<AnalysisResult> {
-  await analyzePhoto(imageUri)
   const form = new FormData();
   // React Native accepts a { uri, name, type } object here. Do not set Content-Type yourself;
   // fetch adds the multipart boundary.
@@ -57,27 +36,26 @@ async function analyzeMeal(
   return (await res.json()) as AnalysisResult;
 }
 
-async function analyzePhoto(path: string) {
-  const form = new FormData();
-  form.append('image', {
-    uri: path.startsWith('file://') ? path : `file://${path}`,
-    name: 'photo.jpg',
-    type: 'image/jpeg',
-  } as any);
-
-  const url = `${API_URL}/analyze`;
-  console.log('POST', url, path);
-
-  const res = await fetch(url, {
+async function estimateMeal(
+  sessionId: string,
+  containers: {
+    id: string;
+    radial_profile?: { id: string; label: string; diameter: number };
+  }[],
+) {
+  const res = await fetch(`${API_URL}/estimate`, {
     method: 'POST',
-    body: form,
-    // NO 'Content-Type' header here. fetch has to generate it with the boundary.
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      containers,
+    }),
   });
-
-  const text = await res.text();
-  console.log('analyze response:', res.status, text);
-  if (!res.ok) throw new Error(`${res.status}: ${text}`);
-  return JSON.parse(text);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Estimate failed (${res.status})`);
+  }
+  return res.json(); // { volumes: ... }
 }
 
 export default { analyzeMeal, estimateMeal }

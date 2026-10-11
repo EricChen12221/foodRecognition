@@ -12,7 +12,7 @@ import {
 import { useAsyncTask } from './helpers/useAsyncTask';
 
 import macroHelper from '../services/macro.ts';
-import ContainerProfileList, { type Container } from '../components/ContainerProfileList.tsx';
+import ContainerProfileList, { type Container, Profile } from '../components/ContainerProfileList.tsx';
 
 function LoadingView({ onCancel }: { onCancel: () => void }) {
   const [seconds, setSeconds] = useState(0);
@@ -54,14 +54,13 @@ function ErrorView({ message, onRetry, onCancel }: {
   );
 }
 
-const standIns = [
-  { id: '1', label: 'Plate', diameter: '28' },
-  { id: '2', label: 'Bowl', diameter: '20' },
+const standIns: Profile[] = [
+  { id: '1', label: 'Plate', diameter: 0.28 },
+  { id: '2', label: 'Bowl', diameter: 0.2 },
 ];
 
-export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
+export default function MealSelectScreen({ path, onCancel }: {
   path: string;              
-  plateDiameterM?: number;   
   onCancel: () => void;      
 }) {
   const { status, data, error, run, cancel } = useAsyncTask(macroHelper.analyzeMeal);
@@ -72,10 +71,11 @@ export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
   const [submitting, setSubmitting] = useState(false);
   useEffect(() => { setChoices({}); }, [data]);
 
-  const containers: Container[] = (data?.containers ?? []).map((c: Container) => ({
+  const containers: Container[] = (data?.containers ?? []).map((c) => ({
     ...c,
-    radial_profile: choices[c.id],
+    radial_profile: radialProfiles.find((p) => p.id === choices[c.id]),
   }));
+
   const allChosen = containers.length > 0 && containers.every((c) => c.radial_profile);
 
   useEffect(() => {
@@ -94,7 +94,6 @@ export default function MealSelectScreen({ path, plateDiameterM, onCancel }: {
       const { volumes } = await macroHelper.estimateMeal(
         data.session_id,
         containers.map(({ id, radial_profile }) => ({ id, radial_profile })),
-        plateDiameterM,
       );
       // TODO: show or navigate with `volumes`
       console.log(volumes);

@@ -5,10 +5,10 @@ export type Container = {
   box: number[];
   score: number | null;
   thumbnail: string | null;
-  radial_profile?: string; // set when the user picks a profile
+  radial_profile?: Profile;   // the whole profile, not just its id
 };
 
-export type Profile = { id: string; label: string };
+export type Profile = { id: string; label: string, diameter: number };
 
 type Props = {
   containers: Container[];
@@ -36,7 +36,7 @@ export default function ContainerProfileList({ containers, profiles, onChoose }:
 
           <View style={styles.chips}>
             {profiles.map((p) => {
-              const selected = c.radial_profile === p.id;
+              const selected = c.radial_profile?.id === p.id;
               return (
                 <Pressable
                   key={p.id}
