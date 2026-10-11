@@ -21,6 +21,8 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
+from typing import List
+
 # Optional: lets Pillow open HEIC photos if pillow-heif is installed.
 try:
     from pillow_heif import register_heif_opener
@@ -176,27 +178,22 @@ def create_app():
 
     # ---- Stage 2: depth + volume, using the user's radial profiles -------------------
     @app.post("/estimate")
-    def estimate(
-        session_id: str = Body(...),
-        # food id (e.g. "food_0") -> that food's radial profile, exactly as the app sends it
-        radial_profiles: Dict[str, Any] = Body(default={}),
-        plate_diameter_m: Optional[float] = Body(default=None),
-    ):
+    def estimate(session_id: str = Body(...), containers: List[Dict[str, Any]] = Body(default=[])):
         s = sessions.get(session_id)
         if s is None:
             raise HTTPException(status_code=404, detail="Session expired or unknown. Re-upload the photo.")
 
-        valid_ids = {f"food_{i}" for i in range(len(s["foods"]))}
-        unknown = set(radial_profiles) - valid_ids
-        if unknown:
-            raise HTTPException(status_code=400, detail=f"Unknown food ids: {sorted(unknown)}")
-
         try:
             with lock, torch.inference_mode():
+                profile_by_id = {c.get("id"): c.get("radial_profile") for c in containers}
+
+                container_masks = [
+                    dict(c, radial_profile=profile_by_id.get(f"container_{i}"))
+                    for i, c in enumerate(s["containers"])
+                ]
+
                 volumes = estimateVolume(
-                    s["foods"], s["containers"], s["image"],
-                    plate_diameter_m=plate_diameter_m,
-                    radial_profiles=radial_profiles,
+                    s["foods"], container_masks, s["image"],
                 )
         except Exception as e:
             traceback.print_exc()

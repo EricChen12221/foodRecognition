@@ -138,7 +138,7 @@ def getFoodsAndContainers(image):
 
     return food_masks, container_masks
 
-def estimateVolume(food_masks, container_masks, image, plate_diameter_m=None, radial_profiles=None):
+def estimateVolume(food_masks, container_masks, image):
     #DEPTH  (pass the PIL image, not the filename)
     image = image.convert("RGB")
 
@@ -165,8 +165,6 @@ def estimateVolume(food_masks, container_masks, image, plate_diameter_m=None, ra
             "key": f"container_{i}",
             "rim": rim,
             "mask": container["mask"],
-            "container_class": "dinner_plate",
-            "known_diameter_m": plate_diameter_m,     # new argument, None = class prior
         })
 
     # the largest ellipse sets the scale
