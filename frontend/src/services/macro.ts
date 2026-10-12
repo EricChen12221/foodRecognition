@@ -58,4 +58,19 @@ async function estimateMeal(
   return res.json(); // { volumes: ... }
 }
 
-export default { analyzeMeal, estimateMeal }
+async function convertToMacros(volumes: { id: string; label: string; volume_ml?: number | null; volume_ml_low?: number | null; volume_ml_high?: number | null; }[]) {
+  const res = await fetch(`${API_URL}/api/macros`, 
+    {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(volumes)
+    }
+  )
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Estimate failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export default { analyzeMeal, estimateMeal, convertToMacros }
