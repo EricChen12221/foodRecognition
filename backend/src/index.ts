@@ -1,5 +1,6 @@
 import express from 'express';
 import multer from 'multer';
+import { macrosForMeal } from './foods'
 import { createPythonClient, PythonServiceError } from './pythonClient';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -75,5 +76,16 @@ app.post('/api/estimate', express.json(), async (req, res) => {
     res.status(502).json({ detail: 'Could not reach the analysis server.' });
   }
 });
+
+app.post('/api/macros', express.json(), async(req, res) => {
+  const { volumes } = req.body ?? {};
+  if (!Array.isArray(volumes)) {
+    return res.status(400).json({ detail: 'volumes are required.' });
+  }
+
+  const macros = macrosForMeal(volumes)
+  res.status(200).json(macros)
+
+})
 
 app.listen(PORT, () => console.log(`API listening on :${PORT}`));

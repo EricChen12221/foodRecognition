@@ -1,0 +1,111 @@
+name,density,kcal,protein,fat,carbs,basis
+apple,0.84,52,0.3,0.2,13.8,solid
+apricot,0.95,48,1.4,0.4,11.1,solid
+avocado,0.95,160,2.0,14.7,8.5,solid
+banana,0.94,89,1.1,0.3,22.8,solid
+blackberry,0.61,43,1.4,0.5,9.6,pile
+blueberry,0.63,57,0.7,0.3,14.5,pile
+cantaloupe,0.95,34,0.8,0.2,8.2,solid
+cherry,0.9,63,1.1,0.2,16.0,solid
+clementine,0.95,47,0.9,0.2,12.0,solid
+date,1.2,277,1.8,0.2,75.0,solid
+fig,0.95,74,0.8,0.3,19.2,solid
+grape,0.95,69,0.7,0.2,18.1,solid
+grapefruit,0.95,42,0.8,0.1,10.7,solid
+honeydew,0.95,36,0.5,0.1,9.1,solid
+kiwi,1.0,61,1.1,0.5,14.7,solid
+lemon,0.95,29,1.1,0.3,9.3,solid
+lime,0.95,30,0.7,0.2,10.5,solid
+mango,1.0,60,0.8,0.4,15.0,solid
+nectarine,0.95,44,1.1,0.3,10.6,solid
+orange,0.95,47,0.9,0.1,11.8,solid
+papaya,0.95,43,0.5,0.3,10.8,solid
+peach,0.95,39,0.9,0.3,9.5,solid
+pear,0.9,57,0.4,0.1,15.2,solid
+pineapple,0.98,50,0.5,0.1,13.1,solid
+plum,0.95,46,0.7,0.3,11.4,solid
+pomegranate,0.74,83,1.7,1.2,18.7,pile
+raisin,0.61,299,3.1,0.5,79.2,pile
+raspberry,0.52,52,1.2,0.7,11.9,pile
+strawberry,0.9,32,0.7,0.3,7.7,solid
+watermelon,0.95,30,0.6,0.2,7.6,solid
+arugula,0.09,25,2.6,0.7,3.7,pile
+asparagus,0.9,20,2.2,0.1,3.9,solid
+beet,1.05,43,1.6,0.2,9.6,solid
+bell pepper,0.9,31,1.0,0.3,6.0,solid
+broccoli,0.4,34,2.8,0.4,6.6,pile
+brussels sprout,0.5,43,3.4,0.3,9.0,pile
+cabbage,0.3,25,1.3,0.1,5.8,pile
+carrot,1.0,41,0.9,0.2,9.6,solid
+cauliflower,0.45,25,1.9,0.3,5.0,pile
+celery,0.6,14,0.7,0.2,3.0,solid
+corn,0.7,96,3.4,1.5,21.0,pile
+cucumber,0.95,15,0.7,0.1,3.6,solid
+eggplant,0.6,25,1.0,0.2,5.9,pile
+green bean,0.42,31,1.8,0.2,7.0,pile
+hummus,1.04,166,7.9,9.6,14.3,pile
+kale,0.25,49,4.3,0.9,8.8,pile
+lettuce,0.15,15,1.4,0.2,2.9,pile
+mashed potato,0.89,113,2.0,4.2,16.9,pile
+mushroom,0.5,22,3.1,0.3,3.3,pile
+onion,0.9,40,1.1,0.1,9.3,solid
+pea,0.62,81,5.4,0.4,14.5,pile
+potato,1.05,87,1.9,0.1,20.1,solid
+pumpkin,0.95,26,1.0,0.1,6.5,solid
+radish,0.95,16,0.7,0.1,3.4,solid
+spinach,0.13,23,2.9,0.4,3.6,pile
+sweet potato,1.0,90,2.0,0.2,20.7,solid
+tomato,0.95,18,0.9,0.2,3.9,solid
+zucchini,0.95,17,1.2,0.3,3.1,solid
+bacon,0.6,541,37.0,41.8,1.4,solid
+beef,1.05,206,28.0,10.0,0.0,solid
+steak,1.05,206,28.0,10.0,0.0,solid
+ground beef,0.9,250,26.0,16.0,0.0,pile
+pork,1.05,231,26.0,14.0,0.0,solid
+pork chop,1.05,231,26.0,14.0,0.0,solid
+chicken,1.05,165,31.0,3.6,0.0,solid
+chicken breast,1.05,165,31.0,3.6,0.0,solid
+chicken thigh,1.05,209,26.0,10.9,0.0,solid
+chicken drumstick,1.05,172,28.3,5.7,0.0,solid
+turkey,1.05,135,30.1,0.7,0.0,solid
+salmon,1.05,206,22.1,12.4,0.0,solid
+cod,1.0,105,22.8,0.9,0.0,solid
+tuna,0.95,116,25.5,0.8,0.0,solid
+shrimp,0.9,99,24.0,0.3,0.2,solid
+milk,1.03,61,3.2,3.3,4.8,liquid
+skim milk,1.03,34,3.4,0.1,5.0,liquid
+2% milk,1.03,50,3.3,2.0,4.8,liquid
+yogurt,1.04,61,3.5,3.3,4.7,solid
+greek yogurt,1.05,59,10.2,0.4,3.6,solid
+cheese,1.1,403,24.9,33.1,1.3,solid
+mozzarella,1.05,254,24.3,15.9,2.8,solid
+parmesan,1.1,431,38.0,29.0,4.1,solid
+cream cheese,0.97,342,5.9,34.2,4.1,solid
+sour cream,0.97,198,2.4,19.4,4.6,solid
+heavy cream,0.99,340,2.8,36.1,2.8,liquid
+cottage cheese,0.95,98,11.1,4.3,3.4,pile
+butter,0.91,717,0.9,81.1,0.1,solid
+ice cream,0.56,207,3.5,11.0,23.6,solid
+egg,1.03,155,12.6,10.6,1.1,solid
+fried egg,0.95,196,13.6,14.8,0.8,solid
+scrambled egg,0.93,149,10.0,11.0,1.6,pile
+bread,0.25,265,9.0,3.2,49.0,solid
+pancake,0.65,227,6.4,9.7,28.3,solid
+rice,0.67,130,2.7,0.3,28.2,pile
+pasta,0.6,158,5.8,0.9,30.9,pile
+quinoa,0.78,120,4.4,1.9,21.3,pile
+oatmeal,1.0,71,2.5,1.5,12.0,pile
+black bean,0.73,132,8.9,0.5,23.7,pile
+chickpea,0.69,164,8.9,2.6,27.4,pile
+lentil,0.84,116,9.0,0.4,20.1,pile
+almond,0.6,579,21.2,49.9,21.6,pile
+peanut,0.62,567,25.8,49.2,16.1,pile
+walnut,0.42,654,15.2,65.2,13.7,pile
+peanut butter,1.07,588,25.1,50.4,20.0,solid
+honey,1.42,304,0.3,0.0,82.4,liquid
+olive oil,0.91,884,0.0,100.0,0.0,liquid
+chicken nugget,0.7,296,15.0,18.0,17.0,solid
+french fry,0.4,312,3.4,15.0,41.4,pile
+cheeseburger,0.5,295,15.0,14.0,30.0,solid
+hamburger,0.5,254,13.0,9.0,31.0,solid
+pizza,0.6,266,11.4,10.4,33.0,solid
