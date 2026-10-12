@@ -31,7 +31,7 @@ export default function ContainerProfileList({ containers, profiles, onChoose }:
             ) : (
               <View style={[styles.thumb, styles.thumbEmpty]} />
             )}
-            <Text style={styles.cardTitle}>Plate {i + 1}</Text>
+            <Text style={styles.cardTitle}>Profile {i + 1}</Text>
           </View>
 
           <View style={styles.chips}>

@@ -174,7 +174,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#f6f7f4', paddingTop: 30 },
   screenContent: { padding: 20, paddingBottom: 40, gap: 20 },
 
-  title: { fontSize: 28, fontWeight: '700', color: '#1b2420' },
+  title: { fontSize: 18, fontWeight: '700', color: '#1b2420' },
 
   photoCard: {
     borderRadius: 20,
