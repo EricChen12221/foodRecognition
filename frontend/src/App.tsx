@@ -25,8 +25,8 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { PhotoFile } from 'react-native-vision-camera';
 
 import ProfileScreen from './screens/ProfileScreen.tsx'
-import TrackerScreen from './screens/TrackerScreen.tsx'
-import MealScreen from './screens/MealScreen.tsx'
+import TrackerScreen from './screens/TrackerScreen/index.tsx'
+import ContainerScreen from './screens/ContainerScreen'
 
 import { floatingTabBar } from './tabBarStyle';
 
@@ -162,7 +162,7 @@ function App() {
 
   if (imageChosen && filePath) {
     return (
-    <MealScreen
+    <ContainerScreen
       key={filePath.filePath}
       path={filePath.filePath}
       onCancel={() => { setImageChosen(false); setFilePath(undefined); }}

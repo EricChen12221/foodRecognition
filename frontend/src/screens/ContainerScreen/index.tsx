@@ -9,10 +9,12 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useAsyncTask } from './helpers/useAsyncTask';
+import { useAsyncTask } from '../helpers/useAsyncTask.ts';
 
-import macroHelper from '../services/macro.ts';
-import ContainerProfileList, { type Container, Profile } from '../components/ContainerProfileList.tsx';
+import { useNavigation } from '@react-navigation/native';
+
+import macroHelper from '../../services/macro.ts';
+import ContainerProfileList, { type Container, Profile } from './components/ContainerProfileList.tsx';
 
 function LoadingView({ onCancel }: { onCancel: () => void }) {
   const [seconds, setSeconds] = useState(0);
@@ -73,9 +75,9 @@ const standIns: Profile[] = [
   { id: '2', label: 'Bowl', diameter: 0.2 },
 ];
 
-export default function MealSelectScreen({ path, onCancel }: {
+export default function ContainerScreen({ path, onCancel }: {
   path: string;              
-  onCancel: () => void;      
+  onCancel: () => void;    
 }) {
   const { status, data, error, run, cancel } = useAsyncTask(macroHelper.analyzeMeal);
   const [radialProfiles] = useState(standIns);
@@ -83,6 +85,9 @@ export default function MealSelectScreen({ path, onCancel }: {
   // The user's profile pick per container id, merged onto the detected containers.
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  const navigation = useNavigation<any>();  
+
   useEffect(() => { setChoices({}); }, [data]);
 
   const containers: Container[] = (data?.containers ?? []).map((c) => ({
@@ -109,8 +114,10 @@ export default function MealSelectScreen({ path, onCancel }: {
         data.session_id,
         containers.map(({ id, radial_profile }) => ({ id, radial_profile })),
       );
-      // TODO: show or navigate with `volumes`
       console.log(volumes);
+
+      onCancel();
+      navigation.navigate('Tracker', { volumes });
     } catch (e) {
       Alert.alert("Couldn't estimate portions", e instanceof Error ? e.message : String(e));
     } finally {
