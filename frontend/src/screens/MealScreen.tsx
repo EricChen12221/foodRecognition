@@ -54,6 +54,20 @@ function ErrorView({ message, onRetry, onCancel }: {
   );
 }
 
+function NoFoodsView({ onCancel }: {
+  onCancel: () => void;
+}) {
+  return (
+    <View style={styles.center}>
+      <Text style={styles.title}>No Foods were found</Text>
+      <Text style={styles.primaryText}>Please try again</Text>
+      <Pressable style={styles.secondary} onPress={onCancel} accessibilityRole="button">
+        <Text style={styles.secondaryText}>Back</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 const standIns: Profile[] = [
   { id: '1', label: 'Plate', diameter: 0.28 },
   { id: '2', label: 'Bowl', diameter: 0.2 },
@@ -115,6 +129,13 @@ export default function MealSelectScreen({ path, onCancel }: {
         onCancel={handleCancel}
       />
     );
+  }
+  if(data.foods.length == 0) {
+    return (
+      <NoFoodsView 
+        onCancel={handleCancel}
+      />
+    )
   }
 
   return (
