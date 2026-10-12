@@ -7,11 +7,10 @@ from pipeline import measure_meal
 
 import torch
 import numpy as np
-from PIL import Image
-from PIL.ExifTags import TAGS
 from transformers import AutoProcessor, AutoModelForCausalLM
 from segment_anything import sam_model_registry, SamPredictor
 from depth_estimation import estimate_depth
+from object_detection import filter_foods
 
 #FIND FOOD AND SEGMENTATION
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -45,7 +44,7 @@ def getFoodsAndContainers(image):
         input_ids=inputs["input_ids"],
         pixel_values=inputs["pixel_values"],
         max_new_tokens=256,
-        num_beams=1,
+        num_beams=3,
         early_stopping=False,
         do_sample=False,
         use_cache=True
@@ -54,9 +53,11 @@ def getFoodsAndContainers(image):
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
     parsed_answer = processor.post_process_generation(generated_text, task=prompt, image_size=image.size)
 
-    parsed_food = parsed_answer['<OD>']['bboxes']
-    parsed_food_labels = parsed_answer['<OD>']['labels']
-    print(f"Detected {len(parsed_food)} food items")
+    parsed_objects = parsed_answer['<OD>']['bboxes']
+    parsed_objects_labels = parsed_answer['<OD>']['labels']
+
+    parsed_food, parsed_food_labels = filter_foods(image, parsed_objects, parsed_objects_labels)
+    print(f"Detected {len(parsed_food)} food items:", parsed_food_labels)
 
     # 2. PASS 2: Get Container Bounding Box
     task = "<OPEN_VOCABULARY_DETECTION>"
