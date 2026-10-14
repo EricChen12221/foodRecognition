@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Alert, ScrollView, StyleSheet } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
-import type { TabParamList, MealVolume } from '../../types/navigation';
+import type { TabParamList, MealMacros } from '../../types';
 
-let meals: MealVolume[][] = []
+import { Meals } from './components/Meals';   // adjust the path
+import macroHelper from '../../services/macro.ts'
 
 export default function TrackerScreen() {
 
@@ -12,16 +13,28 @@ export default function TrackerScreen() {
 
   const newMeal = route.params?.volumes;
 
+  const [meals, setMeals] = useState<MealMacros[]>([]);
+  const handledRef = useRef<typeof newMeal>(undefined);
+
   useEffect(() => {
-    if (!newMeal) return;
-    meals.push(newMeal)
-    navigation.setParams({ loggedMeal: undefined });  // used up, so it can't be added twice
+    if (!newMeal || handledRef.current === newMeal) return;
+    handledRef.current = newMeal;
+    navigation.setParams({ loggedMeal: undefined });
+
+    (async () => {
+      try {
+        const meal = await macroHelper.convertToMacros(newMeal);
+        setMeals((prev) => [...prev, meal]);
+      } catch (e) {
+        Alert.alert("Couldn't calculate macros", e instanceof Error ? e.message : String(e));
+      }
+    })();
   }, [newMeal]);
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Tracker</Text>
-    </View>
+    <ScrollView contentContainerStyle={{ padding: 20 }}>
+      <Meals meals={meals} />
+    </ScrollView>
   );
 }
 
