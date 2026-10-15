@@ -60,7 +60,7 @@ export function Meals({ meals }: { meals: MealMacros[] }) {
 
 const styles = StyleSheet.create({
   list: { gap: 12 },
-  empty: { fontSize: 14, color: '#66706b', textAlign: 'center', marginTop: 24 },
+  empty: { fontSize: 14, color: '#66706b', textAlign: 'center', marginTop: '110%', justifyContent: 'center' },
 
   card: {
     padding: 16,
