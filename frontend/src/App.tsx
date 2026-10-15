@@ -33,7 +33,12 @@ import { floatingTabBar } from './tabBarStyle';
 import { TrackerIcon, ProfileIcon } from './assets/TabIcons';
 import CameraIcon from './assets/CameraIcon.tsx'
 
+import macroHelper from './services/macro.ts';
+import type { MealMacros, MealVolume } from './types';
+
 const Tab = createBottomTabNavigator();
+
+
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -47,6 +52,10 @@ function App() {
 
   const [filePath, setFilePath] = useState<PhotoFile | undefined>()
   const [imageChosen, setImageChosen] = useState(false)
+
+  const [meals, setMeals] = useState<MealMacros[]>([]);
+
+
 
   const openCamera = async () => {
     if (hasPermission) {
@@ -76,6 +85,17 @@ function App() {
       setPhotoTaken(true)
     } catch (e) {
       console.log('Failed to take photo', e);
+    }
+  };
+
+  const handleLogged = async (volumes: MealVolume[]) => {
+    setImageChosen(false);
+    setFilePath(undefined);
+    try {
+      const meal = await macroHelper.convertToMacros(volumes);
+      setMeals((prev) => [...prev, meal]);
+    } catch (e) {
+      Alert.alert("Couldn't calculate macros", e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -166,6 +186,7 @@ function App() {
       key={filePath.filePath}
       path={filePath.filePath}
       onCancel={() => { setImageChosen(false); setFilePath(undefined); }}
+      onLogged={handleLogged}
     />
   );
   }
@@ -184,11 +205,11 @@ function App() {
         >
           <Tab.Screen
             name="Tracker"
-            component={TrackerScreen}
             options={{
               tabBarIcon: ({ color, size }) => <TrackerIcon color={color} size={size} />,
-            }}
-          />
+            }}>
+            {() => <TrackerScreen meals={meals} />}
+          </Tab.Screen>
           <Tab.Screen
             name="Profile"
             component={ProfileScreen}

@@ -11,10 +11,10 @@ import {
 } from 'react-native';
 import { useAsyncTask } from '../helpers/useAsyncTask.ts';
 
-import { useNavigation } from '@react-navigation/native';
-
-import macroHelper from '../../services/macro.ts';
 import ContainerProfileList, { type Container, Profile } from './components/ContainerProfileList.tsx';
+import type { MealVolume } from '../../types.ts'
+
+import macroHelper from '../../services/macro.ts'
 
 function LoadingView({ onCancel }: { onCancel: () => void }) {
   const [seconds, setSeconds] = useState(0);
@@ -75,9 +75,10 @@ const standIns: Profile[] = [
   { id: '2', label: 'Bowl', diameter: 0.2 },
 ];
 
-export default function ContainerScreen({ path, onCancel }: {
+export default function ContainerScreen({ path, onCancel, onLogged }: {
   path: string;              
-  onCancel: () => void;    
+  onCancel: () => void;  
+  onLogged: (volumes: MealVolume[]) => void;  
 }) {
   const { status, data, error, run, cancel } = useAsyncTask(macroHelper.analyzeMeal);
   const [radialProfiles] = useState(standIns);
@@ -85,8 +86,6 @@ export default function ContainerScreen({ path, onCancel }: {
   // The user's profile pick per container id, merged onto the detected containers.
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-
-  const navigation = useNavigation<any>();  
 
   useEffect(() => { setChoices({}); }, [data]);
 
@@ -114,10 +113,8 @@ export default function ContainerScreen({ path, onCancel }: {
         data.session_id,
         containers.map(({ id, radial_profile }) => ({ id, radial_profile })),
       );
-      console.log(volumes);
-
+      onLogged(volumes)
       onCancel();
-      navigation.navigate('Tracker', { volumes });
     } catch (e) {
       Alert.alert("Couldn't estimate portions", e instanceof Error ? e.message : String(e));
     } finally {
