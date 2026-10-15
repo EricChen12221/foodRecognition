@@ -27,80 +27,80 @@ sam.to(device=device)
 
 predictor = SamPredictor(sam)
 
-def getFoodsAndContainers(image):
-    image = image.convert("RGB")
+CONTAINER_WORDS = {"plate", "bowl", "cup", "mug", "glass", "dish", "tray", "platter",
+                   "container", "pan", "pot", "tableware", "dishware", "kitchenware"}
 
-    # 1. PASS 1: Get Food Bounding Boxes via standard 
-    prompt = '<OD>'
+# A container box this close to the whole image is a detection miss, not a real container.
+# (Not lower: a big plate can legitimately fill most of a close-up photo.)
+MAX_CONTAINER_FRAC = 0.97
+MIN_RIM_ARC = 0.5   # rims with less edge support than this are rejected
 
-    inputs = processor(text=prompt, images=image, return_tensors="pt")
 
+def is_container(label):
+    words = label.lower().replace("-", " ").split()
+    return bool(words) and words[-1] in CONTAINER_WORDS
+
+
+def box_area(b):
+    return (b[2] - b[0]) * (b[3] - b[1])
+
+
+def run_florence(image, task, text="", max_new_tokens=256):
+    inputs = processor(text=task + text, images=image, return_tensors="pt")
     inputs = {
         k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
         for k, v in inputs.items()
     }
-
     generated_ids = model.generate(
         input_ids=inputs["input_ids"],
         pixel_values=inputs["pixel_values"],
-        max_new_tokens=256,
-        num_beams=3,
-        early_stopping=False,
-        do_sample=False,
-        use_cache=True
-    )
-
-    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-    parsed_answer = processor.post_process_generation(generated_text, task=prompt, image_size=image.size)
-
-    parsed_objects = parsed_answer['<OD>']['bboxes']
-    parsed_objects_labels = parsed_answer['<OD>']['labels']
-
-    parsed_food, parsed_food_labels = filter_foods(image, parsed_objects, parsed_objects_labels)
-    print(f"Detected {len(parsed_food)} food items:", parsed_food_labels)
-
-    # 2. PASS 2: Get Container Bounding Box
-    task = "<OPEN_VOCABULARY_DETECTION>"
-    text = "plate, bowl, cup, dish, or container containing food"
-
-    prompt = task + text
-
-    inputs = processor(text=prompt, images=image, return_tensors="pt")
-
-    inputs = {
-        k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
-        for k, v in inputs.items()
-    }
-
-    generated_ids = model.generate(
-        input_ids=inputs["input_ids"],
-        pixel_values=inputs["pixel_values"],
-        max_new_tokens=512,
+        max_new_tokens=max_new_tokens,
         num_beams=1,
         early_stopping=False,
         do_sample=False,
-        use_cache=True
+        use_cache=True,
     )
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+    return processor.post_process_generation(
+        generated_text, task=task, image_size=image.size
+    )[task]
 
-    generated_text = processor.batch_decode(
-        generated_ids,
-        skip_special_tokens=False
-    )[0]
 
-    result = processor.post_process_generation(
-        generated_text,
-        task=task,
-        image_size=image.size
+def pick_container(image, od_boxes, od_labels):
+    """Container boxes from <OD> labels; if none, short open-vocabulary prompts.
+    Returns a list with the single largest plausible container (or [])."""
+    cands = [b for b, l in zip(od_boxes, od_labels) if is_container(l)]
+    if not cands:
+        for text in ("plate", "bowl"):                      # one short noun per prompt
+            cands = run_florence(image, "<OPEN_VOCABULARY_DETECTION>", text, 128)["bboxes"]
+            if cands:
+                break
+    img_area = image.width * image.height
+    cands = [b for b in cands if box_area(b) < MAX_CONTAINER_FRAC * img_area]
+    return [{"box": max(cands, key=box_area)}] if cands else []
+
+
+def getFoodsAndContainers(image):
+    image = image.convert("RGB")
+
+    # 1. ONE <OD> pass: objects with labels
+    od = run_florence(image, "<OD>")
+    parsed_objects = od['bboxes']
+    parsed_objects_labels = od['labels']
+    print("OD labels:", parsed_objects_labels)
+
+    # Foods: everything that is NOT a container by label, then CLIP removes non-food objects.
+    pairs = [(b, l) for b, l in zip(parsed_objects, parsed_objects_labels) if not is_container(l)]
+    parsed_food, parsed_food_labels = filter_foods(
+        image, [b for b, _ in pairs], [l for _, l in pairs]
     )
+    print(f"Detected {len(parsed_food)} food items:", parsed_food_labels)
 
-    data = result["<OPEN_VOCABULARY_DETECTION>"]
-    print(data)
-
-    containers =  [{ "box": box } for box in data["bboxes"]]
-
+    # 2. Container: from <OD> if it found one, else a short open-vocabulary prompt
+    containers = pick_container(image, parsed_objects, parsed_objects_labels)
     print("Container boxes:", containers)
 
-    # 3. INITIALIZE SAM AND FEED EVERYTHING IN
+    # 3. SAM
     print(f"Using device: {device}")
 
     image_rgb = np.array(image)
@@ -134,16 +134,16 @@ def getFoodsAndContainers(image):
             'label': parsed_food_labels[i]
         })
 
-     
-    print(f"Success! Container mask generated + {len(food_masks)} food pixel masks extracted.")
+    print(f"Success! {len(container_masks)} container mask(s) + {len(food_masks)} food pixel masks extracted.")
 
     return food_masks, container_masks
 
+
+#  stage 2
 def estimateVolume(food_masks, container_masks, image):
-    #DEPTH  (pass the PIL image, not the filename)
     image = image.convert("RGB")
 
-    r = estimate_depth(np.array(image), max_side=768, cache_dir=".depth_cache")
+    r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
     depth_map, focal_length = r["depth"], r["focal_px"]
     print(depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length)
 
@@ -162,11 +162,24 @@ def estimateVolume(food_masks, container_masks, image):
             f"arc={rim['arc_coverage']:.2f}")
         rim_detector.draw_result(image, rim).save(f"rim_debug_{i}.jpg")
 
+        # NEW: a rim with little edge support is a fit to the wrong edges (e.g. the countertop)
+        if rim["arc_coverage"] < MIN_RIM_ARC:
+            print(f"Container {i}: rim not reliable (arc={rim['arc_coverage']:.2f}), skipping")
+            continue
+
+        # NEW: the user's chosen profile (attached by the server) sets the scale
+        profile = container.get("radial_profile") or {}
         containers_in.append({
             "key": f"container_{i}",
             "rim": rim,
             "mask": container["mask"],
+            "container_class": "bowl" if "bowl" in str(profile.get("label", "")).lower() else "dinner_plate",
+            "known_diameter_m": profile.get("diameter"),
         })
+
+    # NEW: fail with a readable message instead of an index error downstream
+    if not containers_in:
+        raise ValueError("No plate or bowl with a usable rim was found in the photo.")
 
     # the largest ellipse sets the scale
     containers_in.sort(key=lambda c: -c["rim"]["major_axis"])
@@ -176,9 +189,6 @@ def estimateVolume(food_masks, container_masks, image):
 
     print("scale:", result["scale_info"])
     print("unassigned foods:", len(result["unassigned"]))
+    print([f["label"] for f in result["unassigned"]])
     print("dropped foods:", result["dropped"])
     return result["foods"]
-
-
-#foods, containers = getFoodsAndContainers("yumgrub.jpg")
-#volumes = estimateVolume(foods, containers, "yumgrub.jpg")

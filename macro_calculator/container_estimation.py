@@ -264,6 +264,8 @@ def reconstruct_dish(depth_map, ellipse, container_mask, food_mask, focal_length
 
     # Visible dish points in camera coordinates
     dish_points_cam = get_visible_dish_points(depth_map, container_mask, food_mask, K)
+    if len(dish_points_cam) < 500:
+        raise ValueError(f"Only {len(dish_points_cam)} visible dish points; the container is hidden or masked.")
 
     # Joint refinement of axis, center, radius and profile
     profile = fit_radial_profile(dish_points_cam, rim_3d[inliers], normal, center0, R0)

@@ -11,7 +11,7 @@ Uses your repo's module names. Order of operations:
 import numpy as np
 
 from container_estimation import reconstruct_dish
-from food_alignment import assign_foods
+from food_alignment import assign_foods, diagnose
 from calculate_volume import calculate_food_volume
 from calibration import calibrate, volume_range
 
@@ -53,6 +53,30 @@ def dedupe_foods(foods, containment=0.4, iou_thresh=0.8):
     kept = [f for f, k in zip(foods, keep) if k]
     dropped = [f for f, k in zip(foods, keep) if not k]
     return kept, dropped
+
+def combine_by_label(foods):
+    """Sum volumes of foods that share a label (e.g. 6 orange slices -> one 'orange')."""
+    groups = {}
+    for f in foods:
+        label = str(f.get("label", "")).lower().strip()
+        g = groups.setdefault(label, {
+            "id": label,
+            "count": 0,                  # how many detections were merged
+            "ids": [],                   # the original food ids, if they were attached upstream
+            "unmeasured": 0,             # detections with no volume (not inside any container)
+            "volume_ml": None,
+            "volume_ml_low": None,
+            "volume_ml_high": None,
+        })
+        g["count"] += 1
+        if f.get("id") is not None:
+            g["ids"].append(f["id"])
+        if f.get("volume_ml") is None:
+            g["unmeasured"] += 1
+            continue
+        for k in ("volume_ml", "volume_ml_low", "volume_ml_high"):
+            g[k] = (g[k] or 0.0) + float(f[k])
+    return list(groups.values())
 
 
 def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
@@ -98,6 +122,7 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
 
     # 3. foods -> containers (the scaled depth must be used here too)
     assigned = assign_foods(foods, reconstructions, scaled_depth)
+    diagnose(foods, reconstructions, scaled_depth)
 
     # 4. attach volumes to the SAME food dicts (label, box, mask, score are kept)
     u = info["rel_uncertainty"]
@@ -110,7 +135,7 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
         food["volume_ml_low"], food["volume_ml_high"] = volume_range(vol_ml, u)
 
     return {
-        "foods": assigned,                  # one dict per input food, original order
+        "foods": combine_by_label(assigned),                  # one dict per input food, original order
         "unassigned": [f for f in assigned if f["container"] == "None"],
         "dropped": dropped,                 # duplicate / merged masks removed before measuring
         "scale_info": info,                 # scale, source, rel_uncertainty

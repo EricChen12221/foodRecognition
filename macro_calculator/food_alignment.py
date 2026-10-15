@@ -104,3 +104,21 @@ def assign_foods(foods, reconstructions, depth_map, min_fraction=0.5, erode_px=0
         reconstructions[key]["foods"].append(entry)
         results.append(entry)
     return results
+
+def diagnose(foods, reconstructions, depth_map):
+    real = {k: r for k, r in reconstructions.items() if k != "None"}
+    if not real:
+        print("no reconstructions"); return
+    K = next(iter(real.values()))["K"]
+    for food in foods:
+        pts, _ = mask_to_points(food["mask"], depth_map, K)
+        for key, rec in real.items():
+            prof, R = rec["profile"], rec["profile"]["rim_radius"]
+            local = to_dish_coordinates(pts, rec["center"], rec["basis"])
+            r = np.hypot(local[:, 0], local[:, 1])
+            h = local[:, 2] - evaluate_profile(prof, np.minimum(r, R))
+            print(food.get("label"), key, "| pts:", len(pts),
+                  "| outside rim:", round(float((r > R).mean()), 2),
+                  "| below surface:", round(float((h <= -0.03 * R).mean()), 2),
+                  "| too high:", round(float((h >= R).mean()), 2),
+                  "| bowl depth / R:", round(float(-prof["knots_z"][0] / R), 3))
