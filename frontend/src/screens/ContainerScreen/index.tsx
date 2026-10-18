@@ -108,15 +108,17 @@ export default function ContainerScreen({ path, onCancel, onLogged }: {
   async function handleEstimate() {
     if (!data) return;
     setSubmitting(true);
+    let step = 'estimateMeal';
     try {
       const { volumes } = await macroHelper.estimateMeal(
         data.session_id,
         containers.map(({ id, radial_profile }) => ({ id, radial_profile })),
       );
-      onLogged(volumes)
-      onCancel();
+      
+      step = 'onLogged';
+      onLogged(volumes);
     } catch (e) {
-      Alert.alert("Couldn't estimate portions", e instanceof Error ? e.message : String(e));
+      Alert.alert(`Failed at ${step}`, e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
     }

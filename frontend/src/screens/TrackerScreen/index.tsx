@@ -6,13 +6,13 @@ import { Meals } from './components/Meals';   // adjust the path
 
 export default function TrackerScreen({ meals }: { meals: MealMacros[] }) {
   return (
-    <ScrollView contentContainerStyle={{ padding: 20 }}>
+    <ScrollView contentContainerStyle={styles.container}>
       <Meals meals={meals} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  container: { alignItems: 'center', paddingTop: '70', width: '100%' },
   text: { fontSize: 20 },
 });

@@ -15,7 +15,6 @@ export type Range = { estimate: Macros; low: Macros; high: Macros };
 
 export type FoodInput = {
   id: string;
-  label: string;
   volume_ml?: number | null;
   volume_ml_low?: number | null;
   volume_ml_high?: number | null;
@@ -51,14 +50,14 @@ for (const r of rows) {
 }
 console.log(`Loaded ${FOODS.size} foods from ${CSV_PATH}`);
 
-function candidates(label: string): string[] {
-  const k = label.toLowerCase().trim();
+function candidates(id: string): string[] {
+  const k = id.toLowerCase().trim();
   const forms = (w: string) => [w, w.replace(/ies$/, 'y'), w.replace(/es$/, ''), w.replace(/s$/, '')];
   return [...forms(k), ...k.split(/\s+/).reverse().flatMap(forms)];
 }
 
-function lookup(label: string): FoodInfo | undefined {
-  for (const c of candidates(label)) {
+function lookup(id: string): FoodInfo | undefined {
+  for (const c of candidates(id)) {
     const hit = FOODS.get(c);
     if (hit) return hit;
   }
@@ -84,12 +83,12 @@ const add = (a: Macros, b: Macros): Macros => ({
 });
 
 function macrosFor(
-  label: string,
+  id: string,
   volume_ml?: number | null,
   volume_ml_low?: number | null,
   volume_ml_high?: number | null,
 ): Range | null {
-  const info = lookup(label);
+  const info = lookup(id);
   if (!info || volume_ml == null || volume_ml <= 0) return null;   // unknown food or no volume
 
   const estimate = fromVolume(info, volume_ml);
@@ -103,7 +102,7 @@ function macrosFor(
 }
 
 export function macrosForMeal(foods: FoodInput[]) {
-  const items = foods.map((f) => ({ id: f.id, label: f.label, macros: macrosFor(f.label, f.volume_ml, f.volume_ml_low, f.volume_ml_high) }));
+  const items = foods.map((f) => ({ id: f.id, macros: macrosFor(f.id, f.volume_ml, f.volume_ml_low, f.volume_ml_high) }));
 
   const total = items.reduce<Range>(
     (t, i) =>

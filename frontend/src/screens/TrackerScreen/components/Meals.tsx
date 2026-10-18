@@ -29,7 +29,7 @@ function MealCard({ meal }: { meal: MealMacros }) {
       {items.map((item) => (
         <View key={item.id} style={styles.itemRow}>
           <View style={styles.itemName}>
-            <Text style={styles.itemLabel}>{cap(item.label)}</Text>
+            <Text style={styles.itemLabel}>{cap(item.id)}</Text>
             {item.macros ? (
               <Text style={styles.itemSub}>{r(item.macros.estimate.grams)} g</Text>
             ) : null}

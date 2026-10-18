@@ -71,20 +71,23 @@ app.post('/api/estimate', express.json(), async (req, res) => {
       signal: AbortSignal.timeout(PYTHON_TIMEOUT_MS),
     });
     const body = await upstream.json().catch(() => ({}));
-    res.status(upstream.status).json(body);               // keeps 404 (expired session), 400, 500
+    console.log(body)
+    return res.status(upstream.status).json(body);               // keeps 404 (expired session), 400, 500
   } catch (e) {
     console.log(e)
-    res.status(502).json({ detail: 'Could not reach the analysis server.' });
+    return res.status(502).json({ detail: 'Could not reach the analysis server.' });
   }
 });
 
 app.post('/api/macros', express.json(), async(req, res) => {
+  console.log('macros body:', req.headers['content-type'], JSON.stringify(req.body));
   const { volumes } = req.body ?? {};
   if (!Array.isArray(volumes)) {
     return res.status(400).json({ detail: 'volumes are required.' });
   }
 
   const macros = macrosForMeal(volumes)
+  console.log(macros)
   res.status(200).json(macros)
 
 })

@@ -51,6 +51,7 @@ async function estimateMeal(
       containers,
     }),
   });
+  
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(body?.detail ?? `Estimate failed (${res.status})`);
@@ -58,12 +59,12 @@ async function estimateMeal(
   return res.json(); // { volumes: ... }
 }
 
-async function convertToMacros(volumes: { id: string; label: string; volume_ml?: number | null; volume_ml_low?: number | null; volume_ml_high?: number | null; }[]) {
-  const res = await fetch(`${API_URL}/api/macros`, 
+async function convertToMacros(volumes: { id: string; volume_ml?: number | null; volume_ml_low?: number | null; volume_ml_high?: number | null; }[]) {
+  const res = await fetch(`${API_URL}/macros`, 
     {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(volumes)
+        body: JSON.stringify({ volumes }),
     }
   )
   if (!res.ok) {

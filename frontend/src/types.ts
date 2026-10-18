@@ -9,7 +9,6 @@ export type MealMacros = {
 
 export type MealVolume = {
   id: string;                   // for combined entries this is the label itself
-  label: string;                // new: /api/macros needs it to look up the food
   count?: number;               // how many detections were combined, if you use combine_by_label
   volume_ml?: number | null;
   volume_ml_low?: number | null;

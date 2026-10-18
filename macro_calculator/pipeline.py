@@ -61,6 +61,7 @@ def combine_by_label(foods):
         label = str(f.get("label", "")).lower().strip()
         g = groups.setdefault(label, {
             "id": label,
+            "label": label,
             "count": 0,                  # how many detections were merged
             "ids": [],                   # the original food ids, if they were attached upstream
             "unmeasured": 0,             # detections with no volume (not inside any container)
