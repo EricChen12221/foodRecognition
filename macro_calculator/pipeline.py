@@ -61,7 +61,7 @@ def combine_by_label(foods):
         label = str(f.get("label", "")).lower().strip()
         g = groups.setdefault(label, {
             "id": label,
-            "label": label,
+            "label": label,              # needed by /api/macros
             "count": 0,                  # how many detections were merged
             "ids": [],                   # the original food ids, if they were attached upstream
             "unmeasured": 0,             # detections with no volume (not inside any container)
@@ -77,8 +77,8 @@ def combine_by_label(foods):
             continue
         for k in ("volume_ml", "volume_ml_low", "volume_ml_high"):
             g[k] = (g[k] or 0.0) + float(f[k])
-    return list(groups.values())
-
+    # drop labels where nothing was measured (e.g. "desk" outside every container)
+    return [g for g in groups.values() if g["unmeasured"] < g["count"]]
 
 def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
                  reference=0, dedupe=True):
@@ -123,6 +123,15 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
 
     # 3. foods -> containers (the scaled depth must be used here too)
     assigned = assign_foods(foods, reconstructions, scaled_depth)
+    rec = next(iter(reconstructions[k] for k in reconstructions if k != "None"))
+    print(f"focal_px={focal_px:.0f} scale={info['scale']:.3f} "
+        f"R_m={rec['profile']['rim_radius']:.3f} "
+        f"axis_tilt_deg={np.degrees(np.arccos(abs(rec['axis'][2]))):.0f} "
+        f"depth_frac={rec['profile'].get('depth_frac', float('nan')):.2f}")
+    for f in assigned:
+        if f["eval"] is not None:
+            print(f"  {f.get('label')}: area_cm2={f['eval']['food_areas'].sum() * 1e4:.0f} "
+                f"mean_h_cm={f['eval']['food_heights'].mean() * 100:.1f}")
     diagnose(foods, reconstructions, scaled_depth)
 
     # 4. attach volumes to the SAME food dicts (label, box, mask, score are kept)

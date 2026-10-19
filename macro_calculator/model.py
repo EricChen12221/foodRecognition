@@ -28,13 +28,20 @@ sam.to(device=device)
 predictor = SamPredictor(sam)
 
 CONTAINER_WORDS = {"plate", "bowl", "cup", "mug", "glass", "dish", "tray", "platter",
-                   "container", "pan", "pot", "tableware", "dishware", "kitchenware"}
+                   "container", "pan", "pot", "tableware", "dishware", "kitchenware" }
+
+NON_FOOD_WORDS = {"desk", "table", "toaster", "laptop", "keyboard", "person", "hand",
+                  "plastic bag", "bag"}   # remove "bag" entries if you ever log packaged food
+
+
 
 # A container box this close to the whole image is a detection miss, not a real container.
 # (Not lower: a big plate can legitimately fill most of a close-up photo.)
 MAX_CONTAINER_FRAC = 0.97
 MIN_RIM_ARC = 0.5   # rims with less edge support than this are rejected
 
+def is_non_food(label):
+    return label.lower().strip() in NON_FOOD_WORDS
 
 def is_container(label):
     words = label.lower().replace("-", " ").split()
@@ -90,7 +97,8 @@ def getFoodsAndContainers(image):
     print("OD labels:", parsed_objects_labels)
 
     # Foods: everything that is NOT a container by label, then CLIP removes non-food objects.
-    pairs = [(b, l) for b, l in zip(parsed_objects, parsed_objects_labels) if not is_container(l)]
+    pairs = [(b, l) for b, l in zip(parsed_objects, parsed_objects_labels)
+         if not is_container(l) and not is_non_food(l)]
     parsed_food, parsed_food_labels = filter_foods(
         image, [b for b, _ in pairs], [l for _, l in pairs]
     )
