@@ -80,7 +80,7 @@ def fit_plane(points, iterations=500, rel_threshold=0.01, rng=None):
 
     pts = points[best_inliers]
     center = pts.mean(axis=0)
-    _, _, vh = np.linalg.svd(pts - center)
+    _, _, vh = np.linalg.svd(pts - center, full_matrices=False)
     normal = vh[-1] / np.linalg.norm(vh[-1])
 
     return normal, -normal @ center, best_inliers
@@ -172,6 +172,10 @@ def estimate_bowl_height(depth_map, container_mask, K, rim_center, rim_normal,
     v, u = np.where(ring)
     if len(u) < 500:
         return None
+
+    if len(u) > 20000:
+        sel = np.random.default_rng(seed).choice(len(u), 20000, replace=False)
+        u, v = u[sel], v[sel]
  
     pts = depth_to_3d(np.column_stack([u, v]), depth_map[v, u], K)
     normal, _, inliers = fit_plane(pts, rng=np.random.default_rng(seed))
@@ -302,7 +306,7 @@ def reconstruct_dish(depth_map, ellipse, container_mask, food_mask, focal_length
     dish_points_cam = get_visible_dish_points(depth_map, container_mask, food_mask, K)
     if len(dish_points_cam) < 500:
         raise ValueError(f"Only {len(dish_points_cam)} visible dish points; the container is hidden or masked.")
-
+    
     # Joint refinement of axis, center, radius and profile
     tb = estimate_bowl_height(depth_map, container_mask, K, center0, normal)
     print("table-based bowl height:", tb)
