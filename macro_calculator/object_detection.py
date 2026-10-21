@@ -19,7 +19,7 @@ NON_FOOD_TYPES = ["kitchenware", "furniture", "electronic device", "clothing",
                   "person", "animal", "tool or utensil", "packaging"]
  
  
-def filter_foods(boxes, labels, threshold=0.5):
+def filter_foods(boxes, labels, threshold=0.6):
     """Keep detections whose label is most likely a kind of food. Returns (boxes, labels), paired.
     Does not modify the lists you pass in."""
     if len(boxes) != len(labels):

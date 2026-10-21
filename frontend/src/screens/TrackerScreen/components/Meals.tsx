@@ -47,7 +47,7 @@ function MealCard({ meal }: { meal: MealMacros }) {
 
 export function Meals({ meals }: { meals: MealMacros[] }) {
   if (meals.length === 0) {
-    return <Text style={styles.empty}>No meals logged yet.</Text>;
+    return 
   }
   return (
     <View style={styles.list}>
