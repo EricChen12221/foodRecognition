@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useAsyncTask } from '../helpers/useAsyncTask.ts';
+import { useAsyncTask } from './helpers/useAsyncTask.ts';
 
 import ContainerProfileList, { type Container, Profile } from './components/ContainerProfileList.tsx';
 import type { MealVolume } from '../../types.ts'

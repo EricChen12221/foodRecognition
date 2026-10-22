@@ -1,6 +1,7 @@
+// src/screens/ProfileScreen/components/EditSection.tsx
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { DEFAULT_GOALS, DEFAULT_PROFILES, type Goals, type Profile } from '../settings';
+import { DEFAULT_GOALS, DEFAULT_PROFILES, type Goals, type Profile } from '../../../settings';
 
 /** Numeric input that only saves on blur, and puts the old value back if the text is invalid. */
 function NumberField({
@@ -64,25 +65,21 @@ function NameField({ value, onCommit }: { value: string; onCommit: (s: string) =
   );
 }
 
-export default function ProfileScreen() {
-  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
-  const [profiles, setProfiles] = useState<Profile[]>(DEFAULT_PROFILES);
-
-  // TODO(db): load saved goals and profiles here, then call setGoals / setProfiles
-
-  const changeGoals = (next: Goals) => {
-    setGoals(next);
-  };
-  const changeProfiles = (next: Profile[]) => {
-    setProfiles(next);  };
-
-  const setGoal = (key: keyof Goals) => (n: number) => changeGoals({ ...goals, [key]: n });
+export function EditSection({
+  goals, onGoalsChange, profiles, onProfilesChange,
+}: {
+  goals: Goals;
+  onGoalsChange: (g: Goals) => void;
+  profiles: Profile[];
+  onProfilesChange: (p: Profile[]) => void;
+}) {
+  const setGoal = (key: keyof Goals) => (n: number) => onGoalsChange({ ...goals, [key]: n });
 
   const updateProfile = (id: string, patch: Partial<Profile>) =>
-    changeProfiles(profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+    onProfilesChange(profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)));
 
   const addProfile = () =>
-    changeProfiles([...profiles, { id: String(Date.now()), label: 'New bowl', diameter: 0.2 }]);
+    onProfilesChange([...profiles, { id: String(Date.now()), label: 'New bowl', diameter: 0.2 }]);
 
   const removeProfile = (p: Profile) => {
     if (profiles.length <= 1) {
@@ -94,7 +91,7 @@ export default function ProfileScreen() {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: () => changeProfiles(profiles.filter((x) => x.id !== p.id)),
+        onPress: () => onProfilesChange(profiles.filter((x) => x.id !== p.id)),
       },
     ]);
   };
@@ -106,8 +103,8 @@ export default function ProfileScreen() {
         text: 'Reset',
         style: 'destructive',
         onPress: () => {
-          changeGoals(DEFAULT_GOALS);
-          changeProfiles(DEFAULT_PROFILES);
+          onGoalsChange(DEFAULT_GOALS);
+          onProfilesChange(DEFAULT_PROFILES);
         },
       },
     ]);
@@ -121,6 +118,7 @@ export default function ProfileScreen() {
       automaticallyAdjustKeyboardInsets
       showsVerticalScrollIndicator={false}
     >
+      {/* ---------------- goals ---------------- */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Daily goals</Text>
         <View style={styles.card}>
@@ -134,6 +132,7 @@ export default function ProfileScreen() {
         </View>
       </View>
 
+      {/* ---------------- bowl profiles ---------------- */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Bowl and plate profiles</Text>
         <Text style={styles.hint}>
@@ -172,10 +171,8 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f6f7f4' },
-  content: { paddingTop: 70, paddingHorizontal: 20, paddingBottom: 140, gap: 24 },
-
-  title: { fontSize: 28, fontWeight: '700', color: '#1b2420' },
+  screen: { flex: 1 },
+  content: { paddingTop: 8, paddingHorizontal: 20, paddingBottom: 140, gap: 24 },
 
   section: { gap: 10 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: '#1b2420' },
