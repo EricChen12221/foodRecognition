@@ -53,7 +53,8 @@ export function GoalCard({ meals, goals = DEFAULT_GOALS }: { meals: MealMacros[]
   return (
     <View style={styles.card}>
       <Text style={styles.eyebrow}>Total calories</Text>
-      <Text style={styles.kcal}>{r(kcal).toLocaleString()}</Text>
+      <Text style={styles.kcal}>{r(kcal).toLocaleString()} <Text style={styles.macroGoal}> / {goals.kcal} kcal</Text></Text>
+      <Bar value={kcal} goal={goals.kcal} color={ over ? AMBER : GREEN } />
 
       <View style={styles.divider} />
 
