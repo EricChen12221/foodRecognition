@@ -1,11 +1,12 @@
 import mongoose, { type Model } from 'mongoose'
 
-import DailyMacros from './DailyMacros'
+import DailyMacros from './dailyMacros'
 import Goals from './goals'
-import Profile from './Profile'
+import Profile from './profile'
 
 export interface IUser {
-  user: string
+  user: string,
+  tokenHash: string,
   profiles: { id: string; label: string; diameter: number }[]
   goals: { kcal: number; protein: number; carbs: number; fat: number }
   dailyMacros: { date: string; kcal: number; protein: number; carbs: number; fat: number }[]
