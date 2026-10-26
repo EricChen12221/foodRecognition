@@ -31,7 +31,7 @@ async function analyzeMeal(
   // fetch adds the multipart boundary.
   form.append('image', { uri: imageUri, name: 'meal.jpg', type: 'image/jpeg' } as unknown as Blob);
 
-  const res = await fetch(`${API_URL}/analyze`, { method: 'POST', body: form, signal });
+  const res = await fetch(`${API_URL}/macros/analyze`, { method: 'POST', body: form, signal });
   if (!res.ok) throw new Error(`Server error (${res.status}).`);
   return (await res.json()) as AnalysisResult;
 }
@@ -43,7 +43,7 @@ async function estimateMeal(
     radial_profile?: { id: string; label: string; diameter: number };
   }[],
 ) {
-  const res = await fetch(`${API_URL}/estimate`, {
+  const res = await fetch(`${API_URL}/macros/estimate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -60,7 +60,7 @@ async function estimateMeal(
 }
 
 async function convertToMacros(volumes: { id: string; volume_ml?: number | null; volume_ml_low?: number | null; volume_ml_high?: number | null; }[]) {
-  const res = await fetch(`${API_URL}/macros`, 
+  const res = await fetch(`${API_URL}/macros/convert`, 
     {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
