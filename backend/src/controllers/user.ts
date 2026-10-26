@@ -59,5 +59,13 @@ export async function requireUser(req: Request, res: Response, next: NextFunctio
 router.get('/goals', requireUser, (_req, res) => {
   res.json(res.locals.user.goals)
 })
+
+router.get('/macros', requireUser, (_req, res) => {
+  res.json(res.locals.user.profiles)
+})
+
+router.get('/dailyMacros', requireUser, (_req, res) => {
+  res.json(res.locals.user.dailyMacros)
+})
  
 export default router
