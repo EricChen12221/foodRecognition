@@ -1,10 +1,10 @@
 import User from '../models/user'
 
-type DailyMacrosJson = { id: string; kcal: number; protein: number; carbs: number; fats: number; date: string; }
+type DailyMacrosJson = { kcals: number; protein: number; carbs: number; fats: number; date: string; }
  
 const dailyMacrosOf = (user: { toJSON: () => unknown }) => (user.toJSON() as any).profiles as DailyMacrosJson[]
  
-async function makeProfile(userId: string, dailyMacros: DailyMacrosJson){
+async function addDailyMacros(userId: string, dailyMacros: DailyMacrosJson){
   const user = await User.findByIdAndUpdate(
     userId,
     { $push: { dailyMacros } },
@@ -17,4 +17,4 @@ async function makeProfile(userId: string, dailyMacros: DailyMacrosJson){
   return created
 }
 
-export default { makeProfile }
+export default { addDailyMacros }

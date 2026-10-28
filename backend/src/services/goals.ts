@@ -22,7 +22,7 @@ async function updateGoals(
   userId: string,
   goalId: string,
   patch: {
-    kcal: number;
+    kcals: number;
     protein: number;
     carbs: number;
     fats: number;
@@ -33,7 +33,7 @@ async function updateGoals(
     { _id: userId, 'goals._id': goalId },
     {
       $set: {
-        'goals.$.kcal': patch.kcal,
+        'goals.$.kcal': patch.kcals,
         'goals.$.protein': patch.protein,
         'goals.$.carbs': patch.carbs,
         'goals.$.fats': patch.fats,
