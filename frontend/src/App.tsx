@@ -34,12 +34,11 @@ import CameraIcon from './assets/CameraIcon.tsx'
 
 import macroHelper from './services/macro.ts';
 import { signInAutomatically, type Session} from './services/session'
+import { getProfiles, getGoals } from './services/data'
 
-import type { MealMacros, MealVolume } from './types';
+import type { MealMacros, MealVolume, Profile, Goals } from './types';
 
 const Tab = createBottomTabNavigator();
-
-
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -59,14 +58,31 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
 
+  const [profiles, setProfiles] = useState<Profile[]>()
+  const [goals, setGoals] = useState<Goals>()
+
   const signIn = useCallback(() => {
     setSignInError(null);
     signInAutomatically()
       .then(setSession)
       .catch((e) => setSignInError(e instanceof Error ? e.message : String(e)));
-  }, []);
+  }, []); 
 
-  useEffect(() => { signIn(); }, [signIn]);
+  const initialize = useCallback(() => {
+    if (session) {
+      getProfiles().then(setProfiles)
+      getGoals().then(setGoals)
+    }
+  }, [])
+
+  useEffect(() => { 
+    signIn(); 
+    initialize();
+  }, [signIn, initialize]);
+
+  if (signInError) {
+    return "sign in error";
+  }
 
   const openCamera = async () => {
     if (hasPermission) {
@@ -198,6 +214,7 @@ function App() {
       path={filePath.filePath}
       onCancel={() => { setImageChosen(false); setFilePath(undefined); }}
       onLogged={handleLogged}
+      profiles={profiles}
     />
   );
   }

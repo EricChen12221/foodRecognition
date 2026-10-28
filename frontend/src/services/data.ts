@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { BASE, KEY } from './session'
-import type { DayTotals, Goals, Profile } from '../settings'
+import type { DayTotals, Goals, Profile } from '../types'
  
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
  

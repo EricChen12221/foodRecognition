@@ -1,6 +1,13 @@
 export type Macros = { grams: number; kcal: number; protein: number; fat: number; carbs: number };
 export type MacroRange = { estimate: Macros; low: Macros; high: Macros };
 
+export type Goals = { kcal: number; protein: number; carbs: number; fat: number };
+
+// What was actually eaten on one day (same fields as Goals)
+export type DayTotals = { kcal: number; protein: number; carbs: number; fat: number };
+
+export type Macro = 'protein' | 'carbs' | 'fat';
+
 export type MealMacros = {
   items: { id: string; label: string; macros: MacroRange | null }[];
   total: MacroRange;
@@ -15,7 +22,9 @@ export type MealVolume = {
   volume_ml_high?: number | null;
 };
 
-export type TabParamList = {
-  Tracker: { volumes?: MealVolume[] } | undefined;
-  Profile: undefined;
-};
+export type Profile = {
+  id: string;
+  label: string;
+  diameter: number;
+}
+

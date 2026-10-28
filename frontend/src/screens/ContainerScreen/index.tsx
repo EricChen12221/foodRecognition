@@ -11,8 +11,8 @@ import {
 } from 'react-native';
 import { useAsyncTask } from './helpers/useAsyncTask.ts';
 
-import ContainerProfileList, { type Container, Profile } from './components/ContainerProfileList.tsx';
-import type { MealVolume } from '../../types.ts'
+import ContainerProfileList, { type Container } from './components/ContainerProfileList.tsx';
+import type { MealVolume, Profile } from '../../types.ts'
 
 import macroHelper from '../../services/macro.ts'
 
@@ -75,13 +75,14 @@ const standIns: Profile[] = [
   { id: '2', label: 'Bowl', diameter: 0.2 },
 ];
 
-export default function ContainerScreen({ path, onCancel, onLogged }: {
+export default function ContainerScreen({ path, onCancel, onLogged, profiles }: {
   path: string;              
   onCancel: () => void;  
-  onLogged: (volumes: MealVolume[]) => void;  
+  onLogged: (volumes: MealVolume[]) => void; 
+  profiles?: Profile[]  
 }) {
   const { status, data, error, run, cancel } = useAsyncTask(macroHelper.analyzeMeal);
-  const [radialProfiles] = useState(standIns);
+  const [radialProfiles] = profiles ? useState(profiles) : useState(standIns);
 
   // The user's profile pick per container id, merged onto the detected containers.
   const [choices, setChoices] = useState<Record<string, string>>({});
