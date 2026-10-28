@@ -1,6 +1,6 @@
 import User from '../models/user'
 
-type DailyMacrosJson = { kcals: number; protein: number; carbs: number; fats: number; date: string; }
+type DailyMacrosJson = { kcal: number; protein: number; carbs: number; fat: number; date: string; }
  
 const dailyMacrosOf = (user: { toJSON: () => unknown }) => (user.toJSON() as any).profiles as DailyMacrosJson[]
  

@@ -84,8 +84,8 @@ router.get('/goals', requireUser, (_req, res) => {
  
 router.patch('/goals:goalsId', requireUser, handle(async (req, res) => {
   const goalsId = paramOf(req, 'goalsId')
-  const { kcals, protein, carbs, fats } = req.body ?? {}
-  res.json(await goalsHelper.updateGoals(res.locals.user.id, goalsId, { kcals, protein, carbs, fats }))
+  const { kcal, protein, carbs, fat } = req.body ?? {}
+  res.json(await goalsHelper.updateGoals(res.locals.user.id, goalsId, { kcal, protein, carbs, fat }))
 }))
  
 // profiles
@@ -120,19 +120,19 @@ router.get('/dailyMacros', requireUser, (_req, res) => {
 })
  
 router.post('/dailyMacros', requireUser, handle(async (req, res) => {   // note the leading slash
-  const { kcals, protein, carbs, fats, date } = req.body ?? {}
+  const { kcal, protein, carbs, fat, date } = req.body ?? {}
  
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error('date must look like "2026-10-27".')
   }
-  for (const v of [kcals, protein, carbs, fats]) {
+  for (const v of [kcal, protein, carbs, fat]) {
     if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
       throw new Error('kcal, protein, carbs and fat must be numbers, zero or more.')
     }
   }
  
   res.status(201).json(
-    await dailyMacrosHelper.addDailyMacros(res.locals.user.id, { kcals, protein, carbs, fats, date }),
+    await dailyMacrosHelper.addDailyMacros(res.locals.user.id, { kcal, protein, carbs, fat, date }),
   )
 }))
 

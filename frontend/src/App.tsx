@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler'; // first line
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Alert,
   Linking,
@@ -8,7 +8,6 @@ import {
   StyleSheet,
   useColorScheme,
   View,
-  Text,
   Image,
   Button,
   TouchableOpacity,
@@ -34,6 +33,8 @@ import { TrackerIcon, ProfileIcon } from './assets/TabIcons';
 import CameraIcon from './assets/CameraIcon.tsx'
 
 import macroHelper from './services/macro.ts';
+import { signInAutomatically, type Session} from './services/session'
+
 import type { MealMacros, MealVolume } from './types';
 
 const Tab = createBottomTabNavigator();
@@ -55,7 +56,17 @@ function App() {
 
   const [meals, setMeals] = useState<MealMacros[]>([]);
 
+  const [session, setSession] = useState<Session | null>(null);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
+  const signIn = useCallback(() => {
+    setSignInError(null);
+    signInAutomatically()
+      .then(setSession)
+      .catch((e) => setSignInError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  useEffect(() => { signIn(); }, [signIn]);
 
   const openCamera = async () => {
     if (hasPermission) {

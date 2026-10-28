@@ -1,7 +1,7 @@
 import mongoose from 'mongoose'
 
 const schema = new mongoose.Schema({
-  kcals: {
+  kcal: {
     type: Number,
     required: true
   },
@@ -13,7 +13,7 @@ const schema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  fats: {
+  fat: {
     type: Number,
     required: true
   },
@@ -35,5 +35,6 @@ schema.set("toJSON", {
     return macros
   }
 })
+
 export const DailyMacros = mongoose.model('DailyMacros', schema);
 export default DailyMacros
