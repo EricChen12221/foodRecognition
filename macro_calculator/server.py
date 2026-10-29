@@ -88,7 +88,7 @@ def to_jsonable(v):
     return v
 
 
-def serialize_foods(foods):
+def serialize_foods(foods, img):
     """Keep only what the app needs; masks are far too large for JSON."""
     out = []
     for i, f in enumerate(foods):
@@ -97,6 +97,7 @@ def serialize_foods(foods):
             "label": f.get("label"),
             "box": [float(x) for x in f.get("box", [])],
             "score": _py(f.get("score")),
+            "thumbnail": crop_thumb(img, f.get("box", []))
         })
     return out
 

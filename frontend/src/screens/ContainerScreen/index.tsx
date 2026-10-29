@@ -174,6 +174,23 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
         )}
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Food</Text>
+        <Text style={styles.sectionHint}>
+          Correct the food name if it was incorrectly indentified
+        </Text>
+
+        {containers.length === 0 ? (
+          <Text style={styles.sectionHint}>No plates detected.</Text>
+        ) : (
+          <ContainerProfileList
+            containers={containers}
+            profiles={radialProfiles}
+            onChoose={(cid, pid) => setChoices((prev) => ({ ...prev, [cid]: pid }))}
+          />
+        )}
+      </View>
+
       <Pressable
         style={[styles.primary, (!allChosen || submitting) && styles.primaryDisabled]}
         disabled={!allChosen || submitting}
