@@ -37,7 +37,7 @@ async function updateProfile(
   const user = await User.findOneAndUpdate(
     { _id: userId, 'profiles._id': profileId },   
     { $set: set },                               
-    { new: true, runValidators: true },
+    { returnDocument: 'after', runValidators: true },
   )
   if (!user) throw new Error('Unknown user or profile.')
  

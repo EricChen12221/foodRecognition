@@ -23,7 +23,7 @@ export type FoodInput = {
 const ZERO: Macros = { grams: 0, kcal: 0, protein: 0, fat: 0, carbs: 0 };
 
 const BASE_PCT = 0.2;   
-const CSV_PATH = path.join(__dirname, '..', 'src', 'data', 'foods.csv');
+const CSV_PATH = path.join(__dirname, '..', 'data', 'foods.csv');
 const FOODS = new Map<string, FoodInfo>();
 
 const rows = parse(readFileSync(CSV_PATH, 'utf8'), {

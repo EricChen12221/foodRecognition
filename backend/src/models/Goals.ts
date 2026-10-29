@@ -1,36 +1,13 @@
 import mongoose from 'mongoose'
-
-const schema = new mongoose.Schema({
-  kcals: {
-    type: Number,
-    required: true
+ 
+const goalsSchema = new mongoose.Schema(
+  {
+    kcal: { type: Number, required: true, min: 500, max: 10000, default: 2000 },
+    protein: { type: Number, required: true, min: 1, max: 500, default: 120 },
+    carbs: { type: Number, required: true, min: 1, max: 1000, default: 220 },
+    fat: { type: Number, required: true, min: 1, max: 400, default: 65 },
   },
-  protein: {
-    type: Number,
-    required: true
-  },
-  carbs: {
-    type: Number,
-    required: true
-  },
-  fats: {
-    type: Number,
-    required: true
-  },
-})
-
-schema.set("toJSON", {
-  transform: (_document, returnedObject) => {
-    const goals = returnedObject as any
-
-    goals.id = goals._id
-
-    delete goals._id;
-    delete goals.__v;
-
-    return goals
-  }
-})
-export const Goals = mongoose.model("Goals", schema);
-
-export default Goals;
+  { _id: false },   // goals is one object inside the user, it does not need its own _id
+)
+ 
+export default goalsSchema

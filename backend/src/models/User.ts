@@ -14,6 +14,7 @@ export interface IUser {
 
 const schema = new mongoose.Schema<IUser>({
   user: { type: String, required: true, unique: true },
+  tokenHash: { type: String, required: true },
   profiles: [Profile],
   goals: Goals,
   dailyMacros: [DailyMacros],

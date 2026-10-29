@@ -1,29 +1,19 @@
 import mongoose from 'mongoose'
-
-const schema = new mongoose.Schema({
-  label: {
-    type: String,
-    required: true
-  },
-  diameter: {
-    type: Number,
-    required: true
-  }
+ 
+const profileSchema = new mongoose.Schema({
+  label: { type: String, required: true, trim: true, maxlength: 30 },
+  diameter: { type: Number, required: true, min: 0.05, max: 0.8 },      // OUTER rim width in METERS
 })
-
-schema.set("toJSON", {
+ 
+// Each profile keeps its own _id; this turns it into the `id` the app uses.
+profileSchema.set('toJSON', {
   transform: (_document, returnedObject) => {
-    const profiles = returnedObject as any
-
-    profiles.id = profiles._id
-
-    delete profiles._id;
-    delete profiles.__v;
-
-    return profiles
-  }
+    const profile = returnedObject as any
+    profile.id = profile._id
+    delete profile._id
+    delete profile.__v
+    return profile
+  },
 })
-
-export const Profile = mongoose.model("Profile", schema);
-
-export default Profile;
+ 
+export default profileSchema

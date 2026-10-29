@@ -8,7 +8,7 @@ async function addDailyMacros(userId: string, dailyMacros: DailyMacrosJson){
   const user = await User.findByIdAndUpdate(
     userId,
     { $push: { dailyMacros } },
-    { new: true, runValidators: true },   // runValidators applies the min/max on diameter
+    { returnDocument: 'after', runValidators: true },   // runValidators applies the min/max on diameter
   )
   if (!user) throw new Error('Unknown user.')
  

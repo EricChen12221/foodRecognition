@@ -23,7 +23,6 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
     return;
   }
 
-
   // If the phone gives up, stop waiting on Python too.
   const clientGone = new AbortController();
   res.on('close', () => {

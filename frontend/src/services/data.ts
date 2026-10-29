@@ -20,6 +20,7 @@ export class ApiError extends Error {
 /** Sends a request to /api/user<path> with the saved session token. Returns the parsed JSON. */
 async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
   const token = await AsyncStorage.getItem(KEY)
+
   if (!token) throw new ApiError('Not signed in.', 401)
  
   const res = await fetch(`${BASE}/user${path}`, {
@@ -36,7 +37,7 @@ async function request<T>(path: string, options: { method?: string; body?: unkno
 //goals
 export const getGoals = () => request<Goals>('/goals')
  
-export const updateGoals = (patch: Partial<Goals>) =>
+export const updateGoals = (patch: Partial<Goals>) => 
   request<Goals>('/goals', { method: 'PATCH', body: patch })
  
 //profiles

@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import type { DayTotals, Goals, Profile } from '../types';
 import { DEFAULT_GOALS } from '../settings';
-import * as api from '../services/data';
+import * as data from '../services/data';
 import type { Session } from '../services/session';
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -22,7 +22,7 @@ export function useAccount(session: Session | null) {
     if (!session) return;
     setGoals(session.account.goals);
     setProfiles(session.account.profiles);
-    setDays(api.toDaysMap(session.account.dailyMacros as api.DailyMacro[]));
+    setDays(data.toDaysMap(session.account.dailyMacros as data.DailyMacro[]));
   }, [session]);
 
   // goals
@@ -30,7 +30,7 @@ export function useAccount(session: Session | null) {
     if (goals[key] === value) return;            // blurring a field without changing it sends nothing
     const before = goals;
     setGoals({ ...goals, [key]: value });
-    api.updateGoals({ [key]: value } as Partial<Goals>)
+    data.updateGoals({ ...goals, [key]: value })
       .then(setGoals)                            // then use the server's copy
       .catch((e) => { setGoals(before); fail("Couldn't save your goal", e); });
   };
@@ -38,7 +38,7 @@ export function useAccount(session: Session | null) {
   const resetGoals = () => {
     const before = goals;
     setGoals(DEFAULT_GOALS);
-    api.updateGoals(DEFAULT_GOALS)
+    data.updateGoals(DEFAULT_GOALS)
       .then(setGoals)
       .catch((e) => { setGoals(before); fail("Couldn't reset your goals", e); });
   };
@@ -46,7 +46,7 @@ export function useAccount(session: Session | null) {
   // profiles
   // Adding waits for the server, because the server chooses the new profile's id.
   const addProfile = () => {
-    api.createProfile('New bowl', 0.2)
+    data.createProfile('New bowl', 0.2)
       .then((p) => setProfiles((now) => [...now, p]))
       .catch((e) => fail("Couldn't add a profile", e));
   };
@@ -61,7 +61,7 @@ export function useAccount(session: Session | null) {
 
     const before = profiles;
     setProfiles(profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-    api.updateProfile(id, patch)
+    data.updateProfile(id, patch)
       .then((saved) => setProfiles((now) => now.map((p) => (p.id === id ? saved : p))))
       .catch((e) => { setProfiles(before); fail("Couldn't save the profile", e); });
   };
@@ -69,7 +69,7 @@ export function useAccount(session: Session | null) {
   const deleteProfile = (id: string) => {
     const before = profiles;
     setProfiles(profiles.filter((p) => p.id !== id));
-    api.deleteProfile(id)
+    data.deleteProfile(id)
       .then(setProfiles)                         // the server returns the remaining profiles
       .catch((e) => { setProfiles(before); fail("Couldn't delete the profile", e); });
   };

@@ -21,14 +21,17 @@ const hash = (token: string) => crypto.createHash('sha256').update(token).digest
 // First launch: create an anonymous account and hand the app its secret token, ONCE.
 router.post('/register', async (_req, res) => {
   const token = crypto.randomBytes(32).toString('hex')   // 64 hex characters
- 
+  const encrypted = hash(token)
+
   const user = await User.create({
     user: `guest-${token.slice(0, 8)}`,
-    tokenHash: hash(token),
+    tokenHash: encrypted,
     goals: DEFAULT_GOALS,
     profiles: DEFAULT_PROFILES,
     dailyMacros: [],
   })
+
+  console.log(encrypted)
  
   res.status(201).json({ token, user })
 })
@@ -49,7 +52,6 @@ router.post('/session', express.json(), async (req, res) => {
 })
  
 export async function requireUser(req: Request, res: Response, next: NextFunction) {
-  // match[1] has type string | undefined when noUncheckedIndexedAccess is on, so check it first
   const token = /^Bearer ([0-9a-f]{64})$/.exec(req.header('authorization') ?? '')?.[1]
   const user = token ? await User.findOne({ tokenHash: hash(token) }) : null
  
@@ -82,10 +84,19 @@ router.get('/goals', requireUser, (_req, res) => {
   res.json(res.locals.user.goals)
 })
  
-router.patch('/goals:goalsId', requireUser, handle(async (req, res) => {
-  const goalsId = paramOf(req, 'goalsId')
+router.patch('/goals', requireUser, handle(async (req, res) => {
+  console.log('hi')
+  console.log('Content-Type:', req.headers['content-type'])
+  console.log('Body:', req.body)
+
   const { kcal, protein, carbs, fat } = req.body ?? {}
-  res.json(await goalsHelper.updateGoals(res.locals.user.id, goalsId, { kcal, protein, carbs, fat }))
+
+  const updated = await goalsHelper.updateGoals(
+    res.locals.user.id,
+    { kcal, protein, carbs, fat },
+  )
+
+  res.json(updated)
 }))
  
 // profiles

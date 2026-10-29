@@ -4,7 +4,9 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   Alert,
   Linking,
+  Text,
   StatusBar,
+  ActivityIndicator,
   StyleSheet,
   useColorScheme,
   View,
@@ -68,8 +70,21 @@ function App() {
 
   useEffect(() => { signIn(); }, [signIn]);
 
-  if (signInError) {
-    return "sign in error";
+  const account = useAccount(session);
+
+  if (!session) {
+    return (
+      <View style={styles.centered}>
+        {signInError ? (
+          <>
+            <Text style={styles.text}>{signInError}</Text>
+            <Button title="Try again" onPress={signIn} />
+          </>
+        ) : (
+          <ActivityIndicator size="large" />
+        )}
+      </View>
+    );
   }
 
   const openCamera = async () => {
@@ -114,7 +129,6 @@ function App() {
     }
   };
 
-  const account = useAccount(session);
 
   if (useCam) {
     if (device == null) {

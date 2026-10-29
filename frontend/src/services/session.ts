@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { API_URL } from '@env'
 
-export const BASE = `${API_URL}/api`
+export const BASE = API_URL
 export const KEY = 'session-token'
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
