@@ -1,10 +1,10 @@
 // src/screens/ProfileScreen/components/ProgressSection.tsx
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { MACROS, MACRO_COLORS, type DayTotals, type Goals } from '../../../settings';
+import { MACROS, MACRO_COLORS } from '../../../settings';
+import type { Goals, DayTotals } from '../../../types'
 
 // A macro counts as "met" when the day's total reaches this share of its goal.
-// Change this, or isMet below, if you want a different rule (e.g. "within 10% either way" for fat).
 const MET_AT = 0.9;
 export const isMet = (value: number, goal: number) => goal > 0 && value >= goal * MET_AT;
 

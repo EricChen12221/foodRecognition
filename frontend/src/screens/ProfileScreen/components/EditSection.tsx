@@ -1,7 +1,7 @@
 // src/screens/ProfileScreen/components/EditSection.tsx
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { DEFAULT_GOALS, DEFAULT_PROFILES, type Goals, type Profile } from '../../../settings';
+import type { Profile, Goals } from '../../../types';
 
 /** Numeric input that only saves on blur, and puts the old value back if the text is invalid. */
 function NumberField({
@@ -65,22 +65,19 @@ function NameField({ value, onCommit }: { value: string; onCommit: (s: string) =
   );
 }
 
+// This screen only draws the form and asks before destructive actions.
+// The parent decides what each change does (here: save it through the API).
 export function EditSection({
-  goals, onGoalsChange, profiles, onProfilesChange,
+  goals, profiles, onGoalChange, onProfileAdd, onProfileChange, onProfileDelete, onResetGoals,
 }: {
   goals: Goals;
-  onGoalsChange: (g: Goals) => void;
   profiles: Profile[];
-  onProfilesChange: (p: Profile[]) => void;
+  onGoalChange: (key: keyof Goals, value: number) => void;
+  onProfileAdd: () => void;
+  onProfileChange: (id: string, patch: { label?: string; diameter?: number }) => void;
+  onProfileDelete: (id: string) => void;
+  onResetGoals: () => void;
 }) {
-  const setGoal = (key: keyof Goals) => (n: number) => onGoalsChange({ ...goals, [key]: n });
-
-  const updateProfile = (id: string, patch: Partial<Profile>) =>
-    onProfilesChange(profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)));
-
-  const addProfile = () =>
-    onProfilesChange([...profiles, { id: String(Date.now()), label: 'New bowl', diameter: 0.2 }]);
-
   const removeProfile = (p: Profile) => {
     if (profiles.length <= 1) {
       Alert.alert('Keep at least one profile', 'You need a profile to choose from when you log a meal.');
@@ -88,25 +85,14 @@ export function EditSection({
     }
     Alert.alert(`Delete "${p.label}"?`, undefined, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => onProfilesChange(profiles.filter((x) => x.id !== p.id)),
-      },
+      { text: 'Delete', style: 'destructive', onPress: () => onProfileDelete(p.id) },
     ]);
   };
 
-  const resetAll = () =>
-    Alert.alert('Reset to defaults?', 'This restores the default goals and bowl profiles.', [
+  const resetGoals = () =>
+    Alert.alert('Reset goals to defaults?', 'Your bowl profiles are not changed.', [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Reset',
-        style: 'destructive',
-        onPress: () => {
-          onGoalsChange(DEFAULT_GOALS);
-          onProfilesChange(DEFAULT_PROFILES);
-        },
-      },
+      { text: 'Reset', style: 'destructive', onPress: onResetGoals },
     ]);
 
   return (
@@ -122,13 +108,13 @@ export function EditSection({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Daily goals</Text>
         <View style={styles.card}>
-          <NumberField label="Calories" unit="kcal" value={goals.kcal} min={500} max={10000} onCommit={setGoal('kcal')} />
+          <NumberField label="Calories" unit="kcal" value={goals.kcal} min={500} max={10000} onCommit={(n) => onGoalChange('kcal', n)} />
           <View style={styles.rule} />
-          <NumberField label="Protein" unit="g" value={goals.protein} min={1} max={500} onCommit={setGoal('protein')} />
+          <NumberField label="Protein" unit="g" value={goals.protein} min={1} max={500} onCommit={(n) => onGoalChange('protein', n)} />
           <View style={styles.rule} />
-          <NumberField label="Carbs" unit="g" value={goals.carbs} min={1} max={1000} onCommit={setGoal('carbs')} />
+          <NumberField label="Carbs" unit="g" value={goals.carbs} min={1} max={1000} onCommit={(n) => onGoalChange('carbs', n)} />
           <View style={styles.rule} />
-          <NumberField label="Fat" unit="g" value={goals.fat} min={1} max={400} onCommit={setGoal('fat')} />
+          <NumberField label="Fat" unit="g" value={goals.fat} min={1} max={400} onCommit={(n) => onGoalChange('fat', n)} />
         </View>
       </View>
 
@@ -142,7 +128,7 @@ export function EditSection({
 
         {profiles.map((p) => (
           <View key={p.id} style={styles.card}>
-            <NameField value={p.label} onCommit={(label) => updateProfile(p.id, { label })} />
+            <NameField value={p.label} onCommit={(label) => onProfileChange(p.id, { label })} />
             <View style={styles.rule} />
             <NumberField
               label="Outer diameter"
@@ -150,7 +136,7 @@ export function EditSection({
               value={Math.round(p.diameter * 1000) / 10}
               min={5}
               max={80}
-              onCommit={(cm) => updateProfile(p.id, { diameter: cm / 100 })}
+              onCommit={(cm) => onProfileChange(p.id, { diameter: cm / 100 })}
             />
             <Pressable onPress={() => removeProfile(p)} style={styles.deleteBtn} accessibilityRole="button">
               <Text style={styles.deleteText}>Delete profile</Text>
@@ -158,13 +144,13 @@ export function EditSection({
           </View>
         ))}
 
-        <Pressable onPress={addProfile} style={styles.addBtn} accessibilityRole="button">
+        <Pressable onPress={onProfileAdd} style={styles.addBtn} accessibilityRole="button">
           <Text style={styles.addText}>Add a profile</Text>
         </Pressable>
       </View>
 
-      <Pressable onPress={resetAll} style={styles.resetBtn} accessibilityRole="button">
-        <Text style={styles.resetText}>Reset to defaults</Text>
+      <Pressable onPress={resetGoals} style={styles.resetBtn} accessibilityRole="button">
+        <Text style={styles.resetText}>Reset goals to defaults</Text>
       </Pressable>
     </ScrollView>
   );

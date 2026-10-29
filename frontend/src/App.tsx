@@ -34,9 +34,10 @@ import CameraIcon from './assets/CameraIcon.tsx'
 
 import macroHelper from './services/macro.ts';
 import { signInAutomatically, type Session} from './services/session'
-import { getProfiles, getGoals } from './services/data'
 
 import type { MealMacros, MealVolume, Profile, Goals } from './types';
+import { useAccount } from './hooks/useAccount';
+
 
 const Tab = createBottomTabNavigator();
 
@@ -58,9 +59,6 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
 
-  const [profiles, setProfiles] = useState<Profile[]>()
-  const [goals, setGoals] = useState<Goals>()
-
   const signIn = useCallback(() => {
     setSignInError(null);
     signInAutomatically()
@@ -68,17 +66,7 @@ function App() {
       .catch((e) => setSignInError(e instanceof Error ? e.message : String(e)));
   }, []); 
 
-  const initialize = useCallback(() => {
-    if (session) {
-      getProfiles().then(setProfiles)
-      getGoals().then(setGoals)
-    }
-  }, [])
-
-  useEffect(() => { 
-    signIn(); 
-    initialize();
-  }, [signIn, initialize]);
+  useEffect(() => { signIn(); }, [signIn]);
 
   if (signInError) {
     return "sign in error";
@@ -125,6 +113,8 @@ function App() {
       Alert.alert("Couldn't calculate macros", e instanceof Error ? e.message : String(e));
     }
   };
+
+  const account = useAccount(session);
 
   if (useCam) {
     if (device == null) {
@@ -214,7 +204,7 @@ function App() {
       path={filePath.filePath}
       onCancel={() => { setImageChosen(false); setFilePath(undefined); }}
       onLogged={handleLogged}
-      profiles={profiles}
+      profiles={account.profiles}
     />
   );
   }
@@ -236,15 +226,16 @@ function App() {
             options={{
               tabBarIcon: ({ color, size }) => <TrackerIcon color={color} size={size} />,
             }}>
-            {() => <TrackerScreen meals={meals} />}
+            {() => <TrackerScreen meals={meals} goals={account.goals}/>}
           </Tab.Screen>
           <Tab.Screen
             name="Profile"
-            component={ProfileScreen}
             options={{
               tabBarIcon: ({ color, size }) => <ProfileIcon color={color} size={size} />,
             }}
-          />
+          >
+            {() => <ProfileScreen {...account} />}
+          </Tab.Screen>
         </Tab.Navigator>
       </NavigationContainer>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />

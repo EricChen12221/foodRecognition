@@ -1,14 +1,11 @@
 // src/screens/ProfileScreen/index.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import {
-  DEFAULT_GOALS, DEFAULT_PROFILES,
-  type DayTotals, type Goals, type Profile,
-} from '../../settings';
+import type { AccountData } from '../../hooks/useAccount';
 
-import { SideMenu } from './components/SideMenu.tsx';
-import { EditSection } from './components/EditSection.tsx';
-import { ProgressSection, dayKey } from './components/ProgressSection.tsx';
+import { SideMenu } from './components/SideMenu';
+import { EditSection } from './components/EditSection';
+import { ProgressSection } from './components/ProgressSection';
 
 type Section = 'edit' | 'progress';
 
@@ -17,45 +14,14 @@ const ITEMS: { key: Section; label: string; hint: string }[] = [
   { key: 'progress', label: 'Progress', hint: 'See which goals you met' },
 ];
 
-
-// SAMPLE DATA so you can see the calendar working. Delete this once the database supplies `days`.
-function makeSampleDays(): Record<string, DayTotals> {
-  const out: Record<string, DayTotals> = {};
-  const now = new Date();
-  for (let i = 0; i < 70; i++) {
-    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-    const seed = dt.getDate() + dt.getMonth() * 7;
-    const protein = 70 + ((seed * 17) % 80);
-    const carbs = 150 + ((seed * 29) % 120);
-    const fat = 40 + ((seed * 13) % 45);
-    out[dayKey(dt.getFullYear(), dt.getMonth(), dt.getDate())] = {
-      kcal: 4 * protein + 4 * carbs + 9 * fat,
-      protein,
-      carbs,
-      fat,
-    };
-  }
-  return out;
-}
-
-export default function ProfileScreen() {
+// Goals, profiles and daily totals live in App (see useAccount) and arrive here as props.
+// This screen only keeps UI state: which section is showing and whether the menu is open.
+export default function ProfileScreen({
+  goals, profiles, days,
+  changeGoal, resetGoals, addProfile, changeProfile, deleteProfile,
+}: AccountData) {
   const [section, setSection] = useState<Section>('edit');
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
-  const [profiles, setProfiles] = useState<Profile[]>(DEFAULT_PROFILES);
-  // TODO(db): replace with real daily totals, e.g. { "2026-10-22": { kcal, protein, carbs, fat } }
-  const days = useMemo(makeSampleDays, []);
-
-  // TODO(db): load saved values on mount
-  // useEffect(() => { loadFromDb().then((d) => { setGoals(d.goals); setProfiles(d.profiles); }); }, []);
-
-  const changeGoals = (next: Goals) => {
-    setGoals(next);
-  };
-  const changeProfiles = (next: Profile[]) => {
-    setProfiles(next);
-  };
 
   const current = ITEMS.find((i) => i.key === section)!;
 
@@ -78,9 +44,12 @@ export default function ProfileScreen() {
       {section === 'edit' ? (
         <EditSection
           goals={goals}
-          onGoalsChange={changeGoals}
           profiles={profiles}
-          onProfilesChange={changeProfiles}
+          onGoalChange={changeGoal}
+          onProfileAdd={addProfile}
+          onProfileChange={changeProfile}
+          onProfileDelete={deleteProfile}
+          onResetGoals={resetGoals}
         />
       ) : (
         <ProgressSection goals={goals} days={days} />

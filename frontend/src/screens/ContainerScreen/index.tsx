@@ -13,6 +13,7 @@ import { useAsyncTask } from './helpers/useAsyncTask.ts';
 
 import ContainerProfileList, { type Container } from './components/ContainerProfileList.tsx';
 import type { MealVolume, Profile } from '../../types.ts'
+import { DEFAULT_PROFILES } from '../../settings'
 
 import macroHelper from '../../services/macro.ts'
 
@@ -70,19 +71,14 @@ function NoFoodsView({ onCancel }: {
   );
 }
 
-const standIns: Profile[] = [
-  { id: '1', label: 'Plate', diameter: 0.28 },
-  { id: '2', label: 'Bowl', diameter: 0.2 },
-];
-
-export default function ContainerScreen({ path, onCancel, onLogged, profiles }: {
+export default function ContainerScreen({ path, onCancel, onLogged, profiles = DEFAULT_PROFILES }: {
   path: string;              
   onCancel: () => void;  
   onLogged: (volumes: MealVolume[]) => void; 
   profiles?: Profile[]  
 }) {
   const { status, data, error, run, cancel } = useAsyncTask(macroHelper.analyzeMeal);
-  const [radialProfiles] = profiles ? useState(profiles) : useState(standIns);
+  const [radialProfiles] = useState(profiles)
 
   // The user's profile pick per container id, merged onto the detected containers.
   const [choices, setChoices] = useState<Record<string, string>>({});
