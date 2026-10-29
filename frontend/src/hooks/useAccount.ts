@@ -45,12 +45,12 @@ export function useAccount(session: Session | null) {
 
   // profiles
   // Adding waits for the server, because the server chooses the new profile's id.
-  const addProfile = () => {
-    data.createProfile('New bowl', 0.2)
+   const addProfile = (label: string, diameter: number) => {
+    data.createProfile(label, diameter)
       .then((p) => setProfiles((now) => [...now, p]))
       .catch((e) => fail("Couldn't add a profile", e));
   };
-
+ 
   const changeProfile = (id: string, patch: { label?: string; diameter?: number }) => {
     const current = profiles.find((p) => p.id === id);
     if (!current) return;
@@ -58,14 +58,14 @@ export function useAccount(session: Session | null) {
       (patch.label === undefined || patch.label === current.label) &&
       (patch.diameter === undefined || patch.diameter === current.diameter);
     if (unchanged) return;
-
+ 
     const before = profiles;
     setProfiles(profiles.map((p) => (p.id === id ? { ...p, ...patch } : p)));
     data.updateProfile(id, patch)
       .then((saved) => setProfiles((now) => now.map((p) => (p.id === id ? saved : p))))
       .catch((e) => { setProfiles(before); fail("Couldn't save the profile", e); });
   };
-
+ 
   const deleteProfile = (id: string) => {
     const before = profiles;
     setProfiles(profiles.filter((p) => p.id !== id));
@@ -73,7 +73,7 @@ export function useAccount(session: Session | null) {
       .then(setProfiles)                         // the server returns the remaining profiles
       .catch((e) => { setProfiles(before); fail("Couldn't delete the profile", e); });
   };
-
+ 
   return { goals, profiles, days, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile };
 }
 

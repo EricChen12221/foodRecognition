@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { Profile, Goals } from '../../../types';
+import { ProfileModal } from './ProfileModal';
 
 /** Numeric input that only saves on blur, and puts the old value back if the text is invalid. */
 function NumberField({
@@ -41,52 +42,54 @@ function NumberField({
   );
 }
 
-function NameField({ value, onCommit }: { value: string; onCommit: (s: string) => void }) {
-  const [text, setText] = useState(value);
-  useEffect(() => { setText(value); }, [value]);
-
-  const commit = () => {
-    const t = text.trim();
-    if (t) onCommit(t);
-    else setText(value);
-  };
-
+/** A pencil drawn from plain Views (no icon library needed): cap, body and a pointed tip. */
+function PencilIcon({ size = 20, color = '#1b2420' }: { size?: number; color?: string }) {
+  const w = size * 0.24;
   return (
-    <TextInput
-      style={styles.nameInput}
-      value={text}
-      onChangeText={setText}
-      onEndEditing={commit}
-      placeholder="Name"
-      maxLength={30}
-      returnKeyType="done"
-      accessibilityLabel="Profile name"
-    />
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '45deg' }] }}>
+      <View style={{ width: w, height: size * 0.16, backgroundColor: color, borderTopLeftRadius: 2, borderTopRightRadius: 2 }} />
+      <View style={{ width: w, height: size * 0.46, backgroundColor: color, marginTop: 1.5 }} />
+      <View
+        style={{
+          width: 0, height: 0, marginTop: 1.5,
+          borderLeftWidth: w / 2, borderRightWidth: w / 2, borderTopWidth: size * 0.2,
+          borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: color,
+        }}
+      />
+    </View>
   );
 }
 
-// This screen only draws the form and asks before destructive actions.
-// The parent decides what each change does (here: save it through the API).
+// This screen draws the form and the popup. The parent decides what each change does
+// (here: save it through the API).
 export function EditSection({
   goals, profiles, onGoalChange, onProfileAdd, onProfileChange, onProfileDelete, onResetGoals,
 }: {
   goals: Goals;
   profiles: Profile[];
   onGoalChange: (key: keyof Goals, value: number) => void;
-  onProfileAdd: () => void;
+  onProfileAdd: (label: string, diameter: number) => void;
   onProfileChange: (id: string, patch: { label?: string; diameter?: number }) => void;
   onProfileDelete: (id: string) => void;
   onResetGoals: () => void;
 }) {
-  const removeProfile = (p: Profile) => {
-    if (profiles.length <= 1) {
-      Alert.alert('Keep at least one profile', 'You need a profile to choose from when you log a meal.');
-      return;
-    }
-    Alert.alert(`Delete "${p.label}"?`, undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => onProfileDelete(p.id) },
-    ]);
+  // `visible` and `target` are separate so the popup keeps its content while it fades out.
+  const [visible, setVisible] = useState(false);
+  const [target, setTarget] = useState<Profile | null>(null);   // null = adding a new profile
+
+  const openAdd = () => { setTarget(null); setVisible(true); };
+  const openEdit = (p: Profile) => { setTarget(p); setVisible(true); };
+  const close = () => setVisible(false);
+
+  const save = (label: string, diameter: number) => {
+    if (target) onProfileChange(target.id, { label, diameter });
+    else onProfileAdd(label, diameter);
+    close();
+  };
+
+  const remove = () => {
+    if (target) onProfileDelete(target.id);
+    close();
   };
 
   const resetGoals = () =>
@@ -96,63 +99,80 @@ export function EditSection({
     ]);
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      automaticallyAdjustKeyboardInsets
-      showsVerticalScrollIndicator={false}
-    >
-      {/* ---------------- goals ---------------- */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Daily goals</Text>
-        <View style={styles.card}>
-          <NumberField label="Calories" unit="kcal" value={goals.kcal} min={500} max={10000} onCommit={(n) => onGoalChange('kcal', n)} />
-          <View style={styles.rule} />
-          <NumberField label="Protein" unit="g" value={goals.protein} min={1} max={500} onCommit={(n) => onGoalChange('protein', n)} />
-          <View style={styles.rule} />
-          <NumberField label="Carbs" unit="g" value={goals.carbs} min={1} max={1000} onCommit={(n) => onGoalChange('carbs', n)} />
-          <View style={styles.rule} />
-          <NumberField label="Fat" unit="g" value={goals.fat} min={1} max={400} onCommit={(n) => onGoalChange('fat', n)} />
-        </View>
-      </View>
-
-      {/* ---------------- bowl profiles ---------------- */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Bowl and plate profiles</Text>
-        <Text style={styles.hint}>
-          Enter the width across the outer rim, from edge to edge. Portion sizes scale with the cube of
-          this number, so a few centimeters off makes a big difference. Measure with a ruler if you can.
-        </Text>
-
-        {profiles.map((p) => (
-          <View key={p.id} style={styles.card}>
-            <NameField value={p.label} onCommit={(label) => onProfileChange(p.id, { label })} />
+    <>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ---------------- goals ---------------- */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Daily goals</Text>
+          <View style={styles.card}>
+            <NumberField label="Calories" unit="kcal" value={goals.kcal} min={500} max={10000} onCommit={(n) => onGoalChange('kcal', n)} />
             <View style={styles.rule} />
-            <NumberField
-              label="Outer diameter"
-              unit="cm"
-              value={Math.round(p.diameter * 1000) / 10}
-              min={5}
-              max={80}
-              onCommit={(cm) => onProfileChange(p.id, { diameter: cm / 100 })}
-            />
-            <Pressable onPress={() => removeProfile(p)} style={styles.deleteBtn} accessibilityRole="button">
-              <Text style={styles.deleteText}>Delete profile</Text>
+            <NumberField label="Protein" unit="g" value={goals.protein} min={1} max={500} onCommit={(n) => onGoalChange('protein', n)} />
+            <View style={styles.rule} />
+            <NumberField label="Carbs" unit="g" value={goals.carbs} min={1} max={1000} onCommit={(n) => onGoalChange('carbs', n)} />
+            <View style={styles.rule} />
+            <NumberField label="Fat" unit="g" value={goals.fat} min={1} max={400} onCommit={(n) => onGoalChange('fat', n)} />
+          </View>
+        </View>
+
+        {/* ---------------- bowl profiles ---------------- */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Bowl and plate profiles</Text>
+          <Text style={styles.hint}>
+            Tap the pencil to change a profile. Portion sizes scale with the cube of the diameter, so
+            measure across the outer rim with a ruler if you can.
+          </Text>
+
+          {profiles.map((p) => (
+          <View key={p.id} style={styles.profileRow}>
+            <View style={styles.profileText}>
+              <Text style={styles.profileName} numberOfLines={1}>
+                {p.label}
+              </Text>
+
+              <Text style={styles.profileSub}>
+                {Math.round(p.diameter * 1000) / 10} cm
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={() => openEdit(p)}
+              style={styles.pencilBtn}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit ${p.label}`}
+            >
+              <PencilIcon />
             </Pressable>
           </View>
         ))}
 
-        <Pressable onPress={onProfileAdd} style={styles.addBtn} accessibilityRole="button">
-          <Text style={styles.addText}>Add a profile</Text>
-        </Pressable>
-      </View>
+          <Pressable onPress={openAdd} style={styles.addBtn} accessibilityRole="button">
+            <Text style={styles.addText}>Add a profile</Text>
+          </Pressable>
+        </View>
 
-      <Pressable onPress={resetGoals} style={styles.resetBtn} accessibilityRole="button">
-        <Text style={styles.resetText}>Reset goals to defaults</Text>
-      </Pressable>
-    </ScrollView>
+        <Pressable onPress={resetGoals} style={styles.resetBtn} accessibilityRole="button">
+          <Text style={styles.resetText}>Reset goals to defaults</Text>
+        </Pressable>
+      </ScrollView>
+
+      <ProfileModal
+        visible={visible}
+        profile={target}
+        canDelete={profiles.length > 1}
+        onSave={save}
+        onDelete={remove}
+        onClose={close}
+      />
+    </>
   );
 }
 
@@ -189,10 +209,29 @@ const styles = StyleSheet.create({
   },
   unit: { width: 34, fontSize: 14, color: '#66706b' },
 
-  nameInput: { paddingVertical: 12, fontSize: 17, fontWeight: '600', color: '#1b2420' },
-
-  deleteBtn: { alignSelf: 'flex-start', paddingVertical: 12 },
-  deleteText: { fontSize: 14, color: '#c0392b' },
+  profileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingLeft: 16,
+    paddingRight: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dde3df',
+    backgroundColor: '#ffffff',
+  },
+  profileText: { flex: 1, flexDirection: 'row', alignItems: 'center'},
+  profileName: { fontSize: 17, fontWeight: '600', flexShrink: 1, color: '#222' },
+  profileSub: { fontSize: 17, color: '#1b2420', marginLeft: 'auto'},  
+  pencilBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f6f7f4',
+    marginLeft: 12
+  },
 
   addBtn: {
     paddingVertical: 14,
