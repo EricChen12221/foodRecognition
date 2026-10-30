@@ -1,14 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { Profile } from '../../../types'
+import type { Profile, Container } from '../../../types'
 
-
-export type Container = {
-  id: string;
-  box: number[];
-  score: number | null;
-  thumbnail: string | null;
-  radial_profile?: Profile;   // the whole profile, not just its id
-};
 
 type Props = {
   containers: Container[];

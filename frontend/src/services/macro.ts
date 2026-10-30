@@ -1,22 +1,25 @@
 import { API_URL } from '@env';
 
-export type DetectedContainer = {
+type DetectedContainer = {
   id: string;
   box: number[];
   score: number | null;
   thumbnail: string | null;
 };
 
-export interface DetectedFood {
-  id: string;
+interface DetectedFood {
+  id: number;
   label: string;
   containerId: string | null;
+  box: number[];                 
+  score: number | null;          
+  thumbnail: string | null;      
   volume_ml?: number | null;
   volume_ml_low?: number | null;
   volume_ml_high?: number | null;
 }
 
-export interface AnalysisResult {
+interface AnalysisResult {
   containers: DetectedContainer[];
   session_id: string;
   foods: DetectedFood[];
@@ -42,6 +45,7 @@ async function estimateMeal(
     id: string;
     radial_profile?: { id: string; label: string; diameter: number };
   }[],
+  foods: { id: number, newLabel?: string }[]
 ) {
   const res = await fetch(`${API_URL}/macros/estimate`, {
     method: 'POST',
@@ -49,6 +53,7 @@ async function estimateMeal(
     body: JSON.stringify({
       session_id: sessionId,
       containers,
+      foods
     }),
   });
   

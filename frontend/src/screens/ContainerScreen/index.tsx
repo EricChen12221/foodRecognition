@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { useAsyncTask } from './helpers/useAsyncTask.ts';
 
-import ContainerProfileList, { type Container } from './components/ContainerProfileList.tsx';
-import type { MealVolume, Profile } from '../../types.ts'
+import ContainerProfileList from './components/ContainerProfileList.tsx';
+import FoodList from './components/FoodList.tsx'
+
+import type { MealVolume, Profile, Food, Container } from '../../types.ts'
 import { DEFAULT_PROFILES } from '../../settings'
 
 import macroHelper from '../../services/macro.ts'
@@ -83,15 +85,18 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
   // The user's profile pick per container id, merged onto the detected containers.
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [renames, setRenames] = useState<Record<string, string>>({});
 
+  useEffect(() => { setRenames({}); }, [data]); 
   useEffect(() => { setChoices({}); }, [data]);
 
   const containers: Container[] = (data?.containers ?? []).map((c) => ({
     ...c,
     radial_profile: radialProfiles.find((p) => p.id === choices[c.id]),
   }));
-
   const allChosen = containers.length > 0 && containers.every((c) => c.radial_profile);
+  
+  const foods: Food[] = (data?.foods ?? []).map((f) => ({ ...f, newLabel: renames[f.id] }));
 
   useEffect(() => {
     run(path);
@@ -108,9 +113,10 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
     let step = 'estimateMeal';
     try {
       const { volumes } = await macroHelper.estimateMeal(
-        data.session_id,
-        containers.map(({ id, radial_profile }) => ({ id, radial_profile })),
-      );
+      data.session_id,
+      containers.map(({ id, radial_profile }) => ({ id, radial_profile })),
+      foods.map(({ id, newLabel }) => (newLabel ? { id, newLabel } : { id })),
+    );
       
       step = 'onLogged';
       onLogged(volumes);
@@ -120,6 +126,14 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
       setSubmitting(false);
     }
   }
+
+  const renameFood = (id: number, newLabel: string | null) =>
+    setRenames((prev) => {
+      const next = { ...prev };
+      if (newLabel === null) delete next[id];
+      else next[id] = newLabel;
+      return next;
+    });
 
   if (status === 'idle' || status === 'loading') {
     return <LoadingView onCancel={handleCancel} />;
@@ -166,11 +180,17 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
         {containers.length === 0 ? (
           <Text style={styles.sectionHint}>No plates detected.</Text>
         ) : (
-          <ContainerProfileList
-            containers={containers}
-            profiles={radialProfiles}
-            onChoose={(cid, pid) => setChoices((prev) => ({ ...prev, [cid]: pid }))}
-          />
+          <>
+            <ContainerProfileList
+              containers={containers}
+              profiles={radialProfiles}
+              onChoose={(cid, pid) => setChoices((prev) => ({ ...prev, [cid]: pid }))}
+            />
+            <FoodList 
+              foods={foods}
+              onRename={renameFood}
+            />
+          </>
         )}
       </View>
 

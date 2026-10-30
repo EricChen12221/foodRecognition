@@ -28,3 +28,22 @@ export type Profile = {
   diameter: number;
 }
 
+export type Food = {
+  id: number;
+  label: string;        // what the detector called it. This never changes.
+  newLabel?: string;    // what the user renamed it to, if they did
+  box: number[];
+  score: number | null;
+  thumbnail: string | null;
+  volume_ml?: number | null;
+  volume_ml_low?: number | null;
+  volume_ml_high?: number | null;
+};
+
+export type Container = {
+  id: string;
+  box: number[];
+  score: number | null;
+  thumbnail: string | null;
+  radial_profile?: Profile;   
+};
