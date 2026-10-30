@@ -35,7 +35,7 @@ SESSION_TTL_S = 15 * 60  # how long stage-1 results stay available for stage 2
 
 import base64
 
-def crop_thumb(img, box, size=160):
+def crop_thumb(img, box, size=160, mask=None):
     if len(box) != 4:
         return None
     x1, y1, x2, y2 = [int(v) for v in box]
@@ -44,6 +44,13 @@ def crop_thumb(img, box, size=160):
     if x2 - x1 < 2 or y2 - y1 < 2:
         return None
     crop = img.crop((x1, y1, x2, y2))
+ 
+    if mask is not None:                                   # same size as the image: cut out the same area
+        inside = np.asarray(mask)[y1:y2, x1:x2] > 0
+        arr = np.array(crop)
+        arr[~inside] = 128                                 # neutral gray outside this food
+        crop = Image.fromarray(arr)
+ 
     crop.thumbnail((size, size))
     buf = io.BytesIO()
     crop.save(buf, format="JPEG", quality=80)
@@ -93,11 +100,11 @@ def serialize_foods(foods, img):
     out = []
     for i, f in enumerate(foods):
         out.append({
-            "id": f"food_{i}",
+            "id": i,
             "label": f.get("label"),
             "box": [float(x) for x in f.get("box", [])],
             "score": _py(f.get("score")),
-            "thumbnail": crop_thumb(img, f.get("box", []))
+            "thumbnail": crop_thumb(img, f.get("box", []), mask=f.get("mask", None))
         })
     return out
 
@@ -173,34 +180,57 @@ def create_app():
 
         return {
             "session_id": session_id,
-            "foods": serialize_foods(foods),
+            "foods": serialize_foods(foods, img),
             "containers": serialize_containers(containers, img),
         }
 
     # ---- Stage 2: depth + volume, using the user's radial profiles -------------------
     @app.post("/estimate")
-    def estimate(session_id: str = Body(...), containers: List[Dict[str, Any]] = Body(default=[])):
+    def estimate(
+        session_id: str = Body(...),
+        containers: List[Dict[str, Any]] = Body(default=[]),
+        foods: Optional[List[Dict[str, Any]]] = Body(default=None),
+    ):
         s = sessions.get(session_id)
         if s is None:
             raise HTTPException(status_code=404, detail="Session expired or unknown. Re-upload the photo.")
-
+ 
+        # Which foods to measure, carrying the user's corrected labels.
+        if foods is None:
+            chosen = s["foods"]
+        else:
+            stored = {f"food_{i}": f for i, f in enumerate(s["foods"])}   # same ids /analyze sent out
+            chosen, seen = [], set()
+            for item in foods:
+                fid = item.get("id")
+                label = item.get("label")
+                if fid not in stored:
+                    raise HTTPException(status_code=400, detail=f"Unknown food id: {fid}")
+                if fid in seen:
+                    continue
+                seen.add(fid)
+                if not isinstance(label, str) or not label.strip():
+                    raise HTTPException(status_code=400, detail=f"Food {fid} needs a name.")
+                chosen.append(dict(stored[fid], label=label.strip().lower()))   # masks are shared, label replaced
+ 
+        if not chosen:
+            raise HTTPException(status_code=400, detail="Pick at least one food to measure.")
+ 
         try:
             with lock, torch.inference_mode():
                 profile_by_id = {c.get("id"): c.get("radial_profile") for c in containers}
-
+ 
                 container_masks = [
                     dict(c, radial_profile=profile_by_id.get(f"container_{i}"))
                     for i, c in enumerate(s["containers"])
                 ]
-
-                volumes = estimateVolume(
-                    s["foods"], container_masks, s["image"],
-                )
+ 
+                volumes = estimateVolume(chosen, container_masks, s["image"])
         except Exception as e:
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Volume estimation failed: {e}")
-
-        # Session stays alive until it expires, so the user can tweak profiles and re-run.
+ 
+        # Session stays alive until it expires, so the user can tweak and re-run.
         return {"volumes": to_jsonable(volumes)}
 
     return app

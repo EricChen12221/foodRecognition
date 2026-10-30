@@ -1,5 +1,4 @@
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 export type Food = {
   id: string;

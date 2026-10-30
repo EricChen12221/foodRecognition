@@ -127,6 +127,7 @@ def getFoodsAndContainers(image):
     for i, box in enumerate(parsed_food):
         masks, scores, _ = predictor.predict(box=np.array(box), multimask_output=False)
         food_masks.append({
+            'id': i,
             'box': box,
             'mask': masks[0],
             'score': scores[0],
