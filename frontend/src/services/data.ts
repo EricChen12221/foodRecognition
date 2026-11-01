@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { BASE, KEY } from './session'
-import type { DayTotals, Goals, Profile } from '../types'
+import type { DayTotals, Goals, Profile, MealMacros, MealItem, SavedMeal } from '../types'
  
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
  
 /** One logged day. `date` looks like "2026-10-27". */
-export type DailyMacro = DayTotals & { date: string; id?: string }
+export type DailyMacros = DayTotals & { date: string; id?: string }
  
 /** Thrown for any failed request. `status` lets screens react, e.g. 401 means sign in again. */
 export class ApiError extends Error {
@@ -53,12 +53,29 @@ export const deleteProfile = (id: string) =>
   request<Profile[]>(`/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
  
 //daily macros
-export const getDailyMacros = () => request<DailyMacro[]>('/dailyMacros')
+export const getDailyMacros = () => request<DailyMacros[]>('/dailyMacros')
+
+export const addMeal = (entry: { date: string; name: string; foods: MealItem[] }) =>
+  request<{ meal: SavedMeal; day: DailyMacros }>('/dailyMacros/meal', { method: 'POST', body: entry })
+
+/** Flattens the macro result into the items the server stores. Foods with no estimate are skipped. */
+export const toMealItems = (meal: MealMacros): MealItem[] => {
+  const r1 = (n: number) => Math.round(n * 10) / 10
+  return meal.items.flatMap((i) =>
+    i.macros
+      ? [{
+          label: i.label ?? i.id,
+          grams: r1(i.macros.estimate.grams),
+          kcal: r1(i.macros.estimate.kcal),
+          protein: r1(i.macros.estimate.protein),
+          carbs: r1(i.macros.estimate.carbs),
+          fat: r1(i.macros.estimate.fat),
+        }]
+      : [],
+  )
+}
  
-export const addDailyMacros = (entry: DailyMacro) =>
-  request<DailyMacro[]>('/dailyMacros', { method: 'POST', body: entry })
- 
-export const toDaysMap = (list: DailyMacro[]): Record<string, DayTotals> =>
+export const toDaysMap = (list: DailyMacros[]): Record<string, DayTotals> =>
   Object.fromEntries(
     list.map(({ date, kcal, protein, carbs, fat }) => [date, { kcal, protein, carbs, fat }]),
   )

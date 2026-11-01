@@ -47,3 +47,21 @@ export type Container = {
   thumbnail: string | null;
   radial_profile?: Profile;   
 };
+
+export type MealItem = {
+  label: string
+  grams: number
+  kcal: number
+  protein: number
+  carbs: number
+  fat: number
+}
+
+export type SavedMeal = {
+  name: string
+  kcal: number
+  protein: number
+  carbs: number
+  fat: number
+  items: MealItem[]
+}

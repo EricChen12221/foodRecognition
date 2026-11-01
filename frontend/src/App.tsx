@@ -36,8 +36,11 @@ import CameraIcon from './assets/CameraIcon.tsx'
 
 import macroHelper from './services/macro.ts';
 import { signInAutomatically, type Session} from './services/session'
+import { addMeal, toMealItems } from './services/data'
 
-import type { MealMacros, MealVolume, Profile, Goals } from './types';
+import { dayKey } from './screens/ProfileScreen/components/ProgressSection'
+
+import type { MealMacros, MealVolume } from './types';
 import { useAccount } from './hooks/useAccount';
 
 
@@ -118,17 +121,32 @@ function App() {
     }
   };
 
-  const handleLogged = async (volumes: MealVolume[]) => {
-    setImageChosen(false);
-    setFilePath(undefined);
-    try {
-      const meal = await macroHelper.convertToMacros(volumes);
-      setMeals((prev) => [...prev, meal]);
-    } catch (e) {
-      Alert.alert("Couldn't calculate macros", e instanceof Error ? e.message : String(e));
-    }
-  };
+  const mealNameForNow = () => {
+    const h = new Date().getHours()
+    return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 21 ? 'Dinner' : 'Snack'
+  }
 
+  const handleLogged = async (volumes: MealVolume[]) => {
+    setImageChosen(false)
+    setFilePath(undefined)
+    try {
+      const meal = await macroHelper.convertToMacros(volumes)
+      setMeals((prev) => [...prev, meal])
+
+      const foods = toMealItems(meal)
+      if (foods.length > 0) {
+        const now = new Date()
+        const { day } = await addMeal({
+          date: dayKey(now.getFullYear(), now.getMonth(), now.getDate()),   // the phone's local date
+          name: mealNameForNow(),
+          foods,
+        })
+        account.recordDay(day.date, day)
+      }
+    } catch (e) {
+      Alert.alert("Couldn't save the meal", e instanceof Error ? e.message : String(e))
+    }
+  }
 
   if (useCam) {
     if (device == null) {

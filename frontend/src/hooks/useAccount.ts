@@ -22,7 +22,7 @@ export function useAccount(session: Session | null) {
     if (!session) return;
     setGoals(session.account.goals);
     setProfiles(session.account.profiles);
-    setDays(data.toDaysMap(session.account.dailyMacros as data.DailyMacro[]));
+    setDays(data.toDaysMap(session.account.dailyMacros as data.DailyMacros[]));
   }, [session]);
 
   // goals
@@ -74,7 +74,13 @@ export function useAccount(session: Session | null) {
       .catch((e) => { setProfiles(before); fail("Couldn't delete the profile", e); });
   };
  
-  return { goals, profiles, days, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile };
+  const recordDay = (date: string, totals: DayTotals) =>
+  setDays((prev) => ({
+    ...prev,
+    [date]: { kcal: totals.kcal, protein: totals.protein, carbs: totals.carbs, fat: totals.fat },
+  }))
+
+  return { goals, profiles, days, recordDay, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile }
 }
 
 export type AccountData = ReturnType<typeof useAccount>;

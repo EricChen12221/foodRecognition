@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import express, { Router, type NextFunction, type Request, type Response } from 'express'
 import User from '../models/user' 
 
-import dailyMacrosHelper from '../services/dailyMacros'
+import mealHelper from '../services/meal'
 import goalsHelper from '../services/goals'
 import profilesHelper from '../services/profiles'
 
@@ -131,23 +131,20 @@ router.get('/dailyMacros', requireUser, (_req, res) => {
   res.json(res.locals.user.dailyMacros)
 })
  
-router.post('/dailyMacros/meal', requireUser, handle(async (req, res) => {   // note the leading slash
-  const { kcal, protein, carbs, fat, date, foods } = req.body ?? {}
- 
-  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+router.post('/dailyMacros/meal', requireUser, handle(async (req, res) => {
+  const { name, date, foods } = req.body ?? {}
+
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
     throw new Error('date must look like "2026-10-27".')
   }
-  for (const v of [kcal, protein, carbs, fat]) {
-    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
-      throw new Error('kcal, protein, carbs and fat must be numbers, zero or more.')
-    }
+  if (typeof name !== 'string' || name.trim() === '' || name.length > 60) {
+    throw new Error('A meal needs a name of up to 60 characters.')
+  }
+  if (!Array.isArray(foods)) {
+    throw new Error('foods must be a list.')
   }
 
-  let macros = res.locals.user.dailyMacros.map((dm: {date: string}) => dm.date === date)
-  if (!macros) 
-    macros = await dailyMacrosHelper.addDailyMacros(res.locals.user.id, { kcal, protein, carbs, fat, date, meals : [] })
-
-  res.status(200).json(macros)
+  res.status(201).json(await mealHelper.addMeal(res.locals.user.id, date, name.trim(), foods))
 }))
 
 export default router
