@@ -1,4 +1,5 @@
 import { API_URL } from '@env';
+import type { Profile } from '../types'
 
 type DetectedContainer = {
   id: string;
@@ -25,26 +26,29 @@ interface AnalysisResult {
   foods: DetectedFood[];
 }
 
-async function analyzeMeal(
-  signal: AbortSignal,
-  imageUri: string,
-): Promise<AnalysisResult> {
+async function analyzeMeal(signal: AbortSignal, imageUri: string): Promise<AnalysisResult> {
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;   // a label, not a secret
+
+  signal.addEventListener('abort', () => {
+    fetch(`${API_URL}/macros/cancel/${requestId}`, { method: 'POST' }).catch(() => {});
+  });
+
   const form = new FormData();
-  // React Native accepts a { uri, name, type } object here. Do not set Content-Type yourself;
-  // fetch adds the multipart boundary.
   form.append('image', { uri: imageUri, name: 'meal.jpg', type: 'image/jpeg' } as unknown as Blob);
 
-  const res = await fetch(`${API_URL}/macros/analyze`, { method: 'POST', body: form, signal });
+  const res = await fetch(`${API_URL}/macros/analyze`, {
+    method: 'POST',
+    body: form,
+    headers: { 'x-request-id': requestId },
+    signal,
+  });
   if (!res.ok) throw new Error(`Server error (${res.status}).`);
   return (await res.json()) as AnalysisResult;
 }
 
 async function estimateMeal(
   sessionId: string,
-  containers: {
-    id: string;
-    radial_profile?: { id: string; label: string; diameter: number };
-  }[],
+  containers: { id: string; radial_profile?: Profile }[],
   foods: { id: number, newLabel?: string }[]
 ) {
   const res = await fetch(`${API_URL}/macros/estimate`, {

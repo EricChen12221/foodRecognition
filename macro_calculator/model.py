@@ -4,6 +4,7 @@ transformers.dynamic_module_utils.check_imports = lambda *args, **kwargs: []
 
 from rim_detection import RimDetector
 from pipeline import measure_meal
+from server import Cancelled
 
 import torch
 import numpy as np
@@ -79,10 +80,15 @@ def pick_container(image, od_boxes, od_labels):
     return [{"box": max(cands, key=box_area)}] if cands else []
 
 
-def getFoodsAndContainers(image):
+def getFoodsAndContainers(image, should_stop=lambda: False):
+    def check():
+        if should_stop():
+            raise Cancelled()
+        
     image = image.convert("RGB")
 
     # 1. ONE <OD> pass: objects with labels
+    check()
     od = run_florence(image, "<OD>")
     parsed_objects = od['bboxes']
     parsed_objects_labels = od['labels']
@@ -96,6 +102,7 @@ def getFoodsAndContainers(image):
     print(f"Detected {len(parsed_food)} food items:", parsed_food_labels)
 
     # 2. Container: from <OD> if it found one, else a short open-vocabulary prompt
+    check()
     containers = pick_container(image, parsed_objects, parsed_objects_labels)
     print("Container boxes:", containers)
 
@@ -109,6 +116,8 @@ def getFoodsAndContainers(image):
     container_masks = []
 
     for container in containers:
+        check()
+
         box = np.array(container["box"])
 
         masks, scores, _ = predictor.predict(
@@ -125,6 +134,8 @@ def getFoodsAndContainers(image):
     # Get precise masks for every food item (for individual macro crop-and-caption workflows)
     food_masks = []
     for i, box in enumerate(parsed_food):
+        check()
+
         masks, scores, _ = predictor.predict(box=np.array(box), multimask_output=False)
         food_masks.append({
             'id': i,
@@ -140,9 +151,15 @@ def getFoodsAndContainers(image):
 
 
 #  stage 2
-def estimateVolume(food_masks, container_masks, image):
+def estimateVolume(food_masks, container_masks, image, should_stop=lambda: False):
+    def check():
+        if should_stop():
+            raise Cancelled()
+        
     image = image.convert("RGB")
 
+    check()
+    
     r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
     depth_map, focal_length = r["depth"], r["focal_px"]
     print(depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length)

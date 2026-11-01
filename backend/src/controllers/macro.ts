@@ -16,6 +16,13 @@ const python = createPythonClient({
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
+router.post('/api/cancel/:id', async (req, res) => {
+  const id = req.params.id
+  if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' })
+
+  await fetch(`${PYTHON_URL}/cancel/${encodeURIComponent(id)}`, { method: 'POST' }).catch(() => {})
+  res.json({ ok: true })
+})
 
 router.post('/analyze', upload.single('image'), async (req, res) => {
   if (!req.file) {
@@ -48,10 +55,15 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
 });
 
 router.post('/estimate', express.json(), async (req, res) => {
-  const { session_id, containers } = req.body ?? {};
+  const { session_id, containers, foods } = req.body ?? {};
   if (!session_id || !Array.isArray(containers)) {
     return res.status(400).json({ detail: 'session_id and containers are required.' });
   }
+
+  const clientGone = new AbortController()
+  let timedOut = false
+  res.on('close', () => { if (!res.writableFinished) clientGone.abort() })
+  const timer = setTimeout(() => { timedOut = true; clientGone.abort() }, PYTHON_TIMEOUT_MS)
 
   try {
     const upstream = await fetch(`${PYTHON_URL}/estimate`, {
@@ -60,15 +72,19 @@ router.post('/estimate', express.json(), async (req, res) => {
         'Content-Type': 'application/json',
         ...(process.env.PYTHON_API_KEY ? { 'x-internal-key': process.env.PYTHON_API_KEY } : {}),
       },
-      body: JSON.stringify({ session_id, containers }),
-      signal: AbortSignal.timeout(PYTHON_TIMEOUT_MS),
+      body: JSON.stringify({ session_id, containers, foods }),
+      signal: clientGone.signal,
     });
     const body = await upstream.json().catch(() => ({}));
     console.log(body)
-    return res.status(upstream.status).json(body);               // keeps 404 (expired session), 400, 500
+    res.status(upstream.status).json(body);         
   } catch (e) {
     console.log(e)
+    if (timedOut) return res.status(504).json({ detail: 'The analysis took too long.' })
+    if (clientGone.signal.aborted) return
     return res.status(502).json({ detail: 'Could not reach the analysis server.' });
+  } finally {
+    clearTimeout(timer)
   }
 });
 

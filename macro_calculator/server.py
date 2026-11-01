@@ -4,11 +4,6 @@ Backend for the app: receives the photo, runs your pipeline, returns JSON.
 Run (from macro_calculator, with moge_env active):
     pip install fastapi uvicorn python-multipart
     uvicorn server:app --host 0.0.0.0 --port 8000
-
-Two-stage flow:
-    1. POST /analyze   (image)                      -> foods + containers + session_id
-       ... user reviews detections and enters radial profiles in the app ...
-    2. POST /estimate  (session_id, radial_profiles) -> depth + volumes
 """
 import io
 import os
@@ -34,6 +29,9 @@ SESSION_TTL_S = 15 * 60  # how long stage-1 results stay available for stage 2
 
 
 import base64
+
+class Cancelled(Exception):
+    """Raised inside the pipeline when the request should stop."""
 
 def crop_thumb(img, box, size=160, mask=None):
     if len(box) != 4:
@@ -122,14 +120,17 @@ def serialize_containers(containers, img):
 
 
 def create_app():
-    from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+    import asyncio
+    from fastapi import Body, FastAPI, File, Header, HTTPException, Request, Response, UploadFile
     from typing import Any, Dict, Optional
 
     from model import getFoodsAndContainers, estimateVolume  # imported here so the models load once, at startup
 
     app = FastAPI()
-    lock = threading.Lock()  # SAM's predictor keeps global state: one request at a time
-    sessions = {}            # session_id -> {"created", "image", "foods", "containers"}
+    analysis_lock = asyncio.Lock()         
+    sessions = {}
+    cancel_flags: Dict[str, threading.Event] = {}
+    latest_analyze = {"n": 0}
 
     def purge_old_sessions():
         now = time.time()
@@ -146,29 +147,82 @@ def create_app():
             estimateVolume(foods, containers, img)
         print(f"Warm-up finished in {time.perf_counter() - t:.1f}s")
 
+    def flag_for(request_id: str) -> threading.Event:
+        if len(cancel_flags) > 500:          # a cancel for an id that never arrives must not pile up forever
+            cancel_flags.clear()
+        return cancel_flags.setdefault(request_id, threading.Event())
+    
     try:
-        with lock:
-            warm_up()
+        warm_up()
     except Exception as e:
+        traceback.print_exc()
         print(f"Warm-up failed (server will still start): {e}")
 
     @app.get("/health")
     def health():
         return {"ok": True}
 
-    # ---- Stage 1: detection + segmentation -------------------------------------------
+    @app.post("/cancel/{request_id}")
+    def cancel(request_id: str):
+        flag_for(request_id).set() 
+        return {"ok": True}
+
+    async def run_cancellable(request: Request, request_id: str, work, superseded=lambda: False):
+        """Run work(should_stop) in a thread, one at a time. Raises Cancelled if it should not run or must stop."""
+        flag = flag_for(request_id)
+        try:
+            async with analysis_lock:
+                if flag.is_set() or superseded() or await request.is_disconnected():
+                    raise Cancelled()        # cancelled, replaced or abandoned while waiting in line: never start
+
+                def should_stop():
+                    return flag.is_set() or superseded()
+
+                async def watch():           # backup: a dropped connection counts as a cancel
+                    while not flag.is_set():
+                        if await request.is_disconnected():
+                            flag.set()
+                            return
+                        await asyncio.sleep(0.5)
+
+                watcher = asyncio.create_task(watch())
+                try:
+                    return await asyncio.to_thread(work, should_stop)
+                finally:
+                    watcher.cancel()
+        finally:
+            cancel_flags.pop(request_id, None)
+
     @app.post("/analyze")
-    def analyze(image: UploadFile = File(...)):
-        raw = image.file.read()
+    async def analyze(
+        request: Request,
+        image: UploadFile = File(...),
+        x_request_id: Optional[str] = Header(None),
+    ):
+        request_id = x_request_id or uuid.uuid4().hex
+        latest_analyze["n"] += 1
+        mine = latest_analyze["n"]                       # a newer photo will make this one obsolete
+        superseded = lambda: latest_analyze["n"] != mine
+
+        raw = await image.read()
         try:
             img = load_upload(raw)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-        with lock, torch.inference_mode():
-            foods, containers = getFoodsAndContainers(img)
+        def work(should_stop):
+            with torch.inference_mode():
+                return getFoodsAndContainers(img, should_stop)
 
-        # Masks live only on the server (too big for JSON), so keep them for stage 2.
+        try:
+            foods, containers = await run_cancellable(request, request_id, work, superseded)
+        except Cancelled:
+            if superseded():
+                # the client may still be waiting, so give it a real answer
+                raise HTTPException(status_code=409, detail="Replaced by a newer photo.")
+            print("analyze cancelled: client left")
+            return Response(status_code=499)             # nobody is listening, so this is only for the log
+
         purge_old_sessions()
         session_id = uuid.uuid4().hex
         sessions[session_id] = {
@@ -184,63 +238,67 @@ def create_app():
             "containers": serialize_containers(containers, img),
         }
 
-    # ---- Stage 2: depth + volume, using the user's radial profiles -------------------
     @app.post("/estimate")
-    def estimate(
+    async def estimate(
+        request: Request,
         session_id: str = Body(...),
         containers: List[Dict[str, Any]] = Body(default=[]),
+        # Foods the user kept: {"id": "food_3"} or {"id": "food_3", "newLabel": "muffin"}. None = all detected foods.
         foods: Optional[List[Dict[str, Any]]] = Body(default=None),
+        x_request_id: Optional[str] = Header(None),
     ):
         s = sessions.get(session_id)
         if s is None:
             raise HTTPException(status_code=404, detail="Session expired or unknown. Re-upload the photo.")
- 
-        # Which foods to measure, carrying the user's corrected labels.
+
         if foods is None:
             chosen = s["foods"]
         else:
-            stored = {f"food_{i}": f for i, f in enumerate(s["foods"])}   # same ids /analyze sent out
+            stored = {f"food_{i}": f for i, f in enumerate(s["foods"])}   # the ids /analyze sent out
             chosen, seen = [], set()
             for item in foods:
                 fid = item.get("id")
-                label = item.get("label")
+                new_label = item.get("newLabel")
                 if fid not in stored:
                     raise HTTPException(status_code=400, detail=f"Unknown food id: {fid}")
                 if fid in seen:
                     continue
                 seen.add(fid)
-                if not isinstance(label, str) or not label.strip():
-                    raise HTTPException(status_code=400, detail=f"Food {fid} needs a name.")
-                chosen.append(dict(stored[fid], label=label.strip().lower()))   # masks are shared, label replaced
- 
+
+                original = stored[fid].get("label")
+                if new_label is None:
+                    label = original
+                elif isinstance(new_label, str) and new_label.strip() and len(new_label) <= 40:
+                    label = new_label.strip().lower()
+                else:
+                    raise HTTPException(status_code=400, detail=f"newLabel for {fid} must be 1 to 40 characters.")
+                chosen.append(dict(stored[fid], label=label, original_label=original))
+
         if not chosen:
             raise HTTPException(status_code=400, detail="Pick at least one food to measure.")
- 
+
+        profile_by_id = {c.get("id"): c.get("radial_profile") for c in containers}
+        container_masks = [
+            dict(c, radial_profile=profile_by_id.get(f"container_{i}"))
+            for i, c in enumerate(s["containers"])
+        ]
+
+        def work(should_stop):
+            with torch.inference_mode():
+                return estimateVolume(chosen, container_masks, s["image"], should_stop)
+
         try:
-            with lock, torch.inference_mode():
-                profile_by_id = {c.get("id"): c.get("radial_profile") for c in containers}
- 
-                container_masks = [
-                    dict(c, radial_profile=profile_by_id.get(f"container_{i}"))
-                    for i, c in enumerate(s["containers"])
-                ]
- 
-                volumes = estimateVolume(chosen, container_masks, s["image"])
+            volumes = await run_cancellable(request, x_request_id or uuid.uuid4().hex, work)
+        except Cancelled:
+            print("estimate cancelled: client left")
+            return Response(status_code=499)
         except Exception as e:
             traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Volume estimation failed: {e}")
- 
-        # Session stays alive until it expires, so the user can tweak and re-run.
+
         return {"volumes": to_jsonable(volumes)}
 
     return app
 
 
-try:
-    import fastapi  # noqa: F401
-except ImportError:  # fastapi not installed: the helpers above still import
-    app = None
-else:
-    # Any error from model.py (missing package, bad path, ...) now shows up as itself
-    # instead of being hidden behind "app = None".
-    app = create_app()
+app = create_app()
