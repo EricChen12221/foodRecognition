@@ -1,13 +1,12 @@
 // src/screens/ContainerScreen/components/FoodList.tsx
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import PencilIcon from '../../../assets/PencilIcon';   // adjust to where you saved PencilIcon.tsx
-
+import PencilIcon from '../../../assets/PencilIcon'; 
 import type { Food } from '../../../types'
+
 
 type Props = {
   foods: Food[];
-  // newLabel = the new name, or null to go back to the detected name
   onRename: (id: number, newLabel: string | null) => void;
 };
 

@@ -5,6 +5,7 @@ import User from '../models/user'
 import dailyMacrosHelper from '../services/dailyMacros'
 import goalsHelper from '../services/goals'
 import profilesHelper from '../services/profiles'
+
  
 const router = Router()
  
@@ -130,8 +131,8 @@ router.get('/dailyMacros', requireUser, (_req, res) => {
   res.json(res.locals.user.dailyMacros)
 })
  
-router.post('/dailyMacros', requireUser, handle(async (req, res) => {   // note the leading slash
-  const { kcal, protein, carbs, fat, date } = req.body ?? {}
+router.post('/dailyMacros/meal', requireUser, handle(async (req, res) => {   // note the leading slash
+  const { kcal, protein, carbs, fat, date, foods } = req.body ?? {}
  
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error('date must look like "2026-10-27".')
@@ -141,10 +142,12 @@ router.post('/dailyMacros', requireUser, handle(async (req, res) => {   // note 
       throw new Error('kcal, protein, carbs and fat must be numbers, zero or more.')
     }
   }
- 
-  res.status(201).json(
-    await dailyMacrosHelper.addDailyMacros(res.locals.user.id, { kcal, protein, carbs, fat, date }),
-  )
+
+  let macros = res.locals.user.dailyMacros.map((dm: {date: string}) => dm.date === date)
+  if (!macros) 
+    macros = await dailyMacrosHelper.addDailyMacros(res.locals.user.id, { kcal, protein, carbs, fat, date, meals : [] })
+
+  res.status(200).json(macros)
 }))
 
 export default router

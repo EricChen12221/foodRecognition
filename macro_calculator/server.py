@@ -254,7 +254,7 @@ def create_app():
         if foods is None:
             chosen = s["foods"]
         else:
-            stored = {f"food_{i}": f for i, f in enumerate(s["foods"])}   # the ids /analyze sent out
+            stored = {i: f for i, f in enumerate(s["foods"])}   # the ids /analyze sent out
             chosen, seen = [], set()
             for item in foods:
                 fid = item.get("id")

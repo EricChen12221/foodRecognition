@@ -1,5 +1,7 @@
 import mongoose, { type Model } from 'mongoose'
 
+import type { DailyMacrosJson } from '../types'
+
 import DailyMacros from './dailyMacros'
 import Goals from './goals'
 import Profile from './profile'
@@ -9,7 +11,7 @@ export interface IUser {
   tokenHash: string,
   profiles: { id: string; label: string; diameter: number }[]
   goals: { kcal: number; protein: number; carbs: number; fat: number }
-  dailyMacros: { date: string; kcal: number; protein: number; carbs: number; fat: number }[]
+  dailyMacros: DailyMacrosJson[]
 }
 
 const schema = new mongoose.Schema<IUser>({
