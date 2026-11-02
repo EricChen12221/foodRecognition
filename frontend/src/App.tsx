@@ -36,11 +36,11 @@ import CameraIcon from './assets/CameraIcon.tsx'
 
 import macroHelper from './services/macro.ts';
 import { signInAutomatically, type Session} from './services/session'
-import { addMeal, toMealItems } from './services/data'
+import { addMeal, deleteMeal, toMealItems } from './services/data'
 
 import { dayKey } from './screens/ProfileScreen/components/ProgressSection'
 
-import type { MealMacros, MealVolume } from './types';
+import type { MealMacros, MealVolume, LoggedMeal } from './types';
 import { useAccount } from './hooks/useAccount';
 
 
@@ -59,7 +59,7 @@ function App() {
   const [filePath, setFilePath] = useState<PhotoFile | undefined>()
   const [imageChosen, setImageChosen] = useState(false)
 
-  const [meals, setMeals] = useState<MealMacros[]>([]);
+  const [meals, setMeals] = useState<LoggedMeal[]>([]);
 
   const [session, setSession] = useState<Session | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
@@ -130,22 +130,41 @@ function App() {
     setImageChosen(false)
     setFilePath(undefined)
     try {
-      const meal = await macroHelper.convertToMacros(volumes)
-      setMeals((prev) => [...prev, meal])
+      const macros = await macroHelper.convertToMacros(volumes)
+      const localId = String(Date.now())
+      setMeals((prev) => [...prev, { ...macros, localId }])           // show it right away
 
-      const foods = toMealItems(meal)
+      const foods = toMealItems(macros)
       if (foods.length > 0) {
         const now = new Date()
-        const { day } = await addMeal({
-          date: dayKey(now.getFullYear(), now.getMonth(), now.getDate()),   // the phone's local date
+        const { meal, day } = await addMeal({
+          date: dayKey(now.getFullYear(), now.getMonth(), now.getDate()),
           name: mealNameForNow(),
           foods,
         })
         account.recordDay(day.date, day)
+        // remember where it was saved, so it can be removed later
+        setMeals((prev) =>
+          prev.map((m) => (m.localId === localId ? { ...m, saved: { date: day.date, id: meal._id } } : m)),
+        )
       }
     } catch (e) {
       Alert.alert("Couldn't save the meal", e instanceof Error ? e.message : String(e))
     }
+  }
+
+  const handleDeleteMeal = async (meal: LoggedMeal) => {
+    if (meal.saved) {
+      try {
+        const { day } = await deleteMeal(meal.saved.date, meal.saved.id)
+        if (day) account.recordDay(day.date, day)
+        else account.removeDay(meal.saved.date)
+      } catch (e) {
+        Alert.alert("Couldn't remove the meal", e instanceof Error ? e.message : String(e))
+        return                                  // keep the card if the server could not remove it
+      }
+    }
+    setMeals((prev) => prev.filter((m) => m.localId !== meal.localId))
   }
 
   if (useCam) {
@@ -258,7 +277,7 @@ function App() {
             options={{
               tabBarIcon: ({ color, size }) => <TrackerIcon color={color} size={size} />,
             }}>
-            {() => <TrackerScreen meals={meals} goals={account.goals}/>}
+            {() => <TrackerScreen meals={meals} goals={account.goals} onDeleteMeal={handleDeleteMeal} />}
           </Tab.Screen>
           <Tab.Screen
             name="Profile"

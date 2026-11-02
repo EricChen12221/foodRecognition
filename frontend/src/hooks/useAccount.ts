@@ -80,7 +80,14 @@ export function useAccount(session: Session | null) {
     [date]: { kcal: totals.kcal, protein: totals.protein, carbs: totals.carbs, fat: totals.fat },
   }))
 
-  return { goals, profiles, days, recordDay, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile }
+  const removeDay = (date: string) =>
+    setDays((prev) => {
+      const next = { ...prev }
+      delete next[date]
+      return next
+  })
+
+  return { goals, profiles, days, recordDay, removeDay, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile }
 }
 
 export type AccountData = ReturnType<typeof useAccount>;

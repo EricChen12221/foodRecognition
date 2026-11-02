@@ -20,6 +20,15 @@ export interface AnalyzeResponse {
   foods: AnalyzedFood[];
 }
 
+export interface EstimateRequest {
+  session_id: string;
+  containers: unknown[];
+  foods?: unknown;
+}
+
+// Tighten this to match what your /estimate endpoint actually returns.
+export type EstimateResponse = Record<string, unknown>;
+
 /** Carries the HTTP status your own API should answer with. */
 export class PythonServiceError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -29,16 +38,25 @@ export class PythonServiceError extends Error {
 }
 
 export interface PythonClientOptions {
-  baseUrl: string;          // e.g. http://127.0.0.1:8000
+  baseUrl: string;                  // e.g. http://127.0.0.1:8000
   timeoutMs?: number | undefined;   // the models can be slow; default 3 minutes
-  apiKey?: string | undefined;   // sent as x-internal-key; the Python side checks it
+  apiKey?: string | undefined;      // sent as x-internal-key; the Python side checks it
+}
+
+interface RequestOptions {
+  method: 'GET' | 'POST';
+  body?: BodyInit;
+  headers?: Record<string, string>;
+  signal?: AbortSignal | undefined;
+  timeoutMs?: number;
+  userId?: string | undefined;
 }
 
 async function readDetail(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as { detail?: unknown };
     if (typeof body.detail === 'string') return body.detail;
-    if (body.detail !== undefined) return JSON.stringify(body.detail);   // FastAPI 422 lists
+    if (body.detail !== undefined) return JSON.stringify(body.detail); // FastAPI 422 lists
   } catch {
     /* not JSON */
   }
@@ -46,53 +64,78 @@ async function readDetail(res: Response): Promise<string> {
 }
 
 export function createPythonClient({ baseUrl, timeoutMs = 180000, apiKey }: PythonClientOptions) {
-  async function analyzeMeal(
-    image: Uint8Array,                 // a Node Buffer works
-    mimeType: string,
-    signal?: AbortSignal,              // abort when your own client disconnects
-  ): Promise<AnalyzeResponse> {
-    const form = new FormData();
-    form.append('image', new Blob([new Uint8Array(image)], { type: mimeType }), 'meal.jpg');
-
-    // With exactOptionalPropertyTypes a property must be left out, not set to undefined.
-    const headers: Record<string, string> = {};
+  /** Shared plumbing: auth header, timeout, client-abort, error mapping. */
+  async function request(path: string, opts: RequestOptions): Promise<Response> {
+    const headers: Record<string, string> = { ...opts.headers };
     if (apiKey) headers['x-internal-key'] = apiKey;
+    if (opts.userId) headers['x-user-id'] = opts.userId;
 
     const ctrl = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       ctrl.abort();
-    }, timeoutMs);
+    }, opts.timeoutMs ?? timeoutMs);
     const onAbort = () => ctrl.abort();
-    signal?.addEventListener('abort', onAbort);
+    opts.signal?.addEventListener('abort', onAbort);
 
     try {
       let res: Response;
       try {
-        res = await fetch(`${baseUrl}/analyze`, {
-          method: 'POST',
-          body: form,                  // fetch sets the multipart boundary itself
+        res = await fetch(`${baseUrl}${path}`, {
+          method: opts.method,
           headers,
           signal: ctrl.signal,
+          ...(opts.body !== undefined ? { body: opts.body } : {}),
         });
       } catch {
         if (timedOut) throw new PythonServiceError('The analysis service timed out.', 504);
-        if (signal?.aborted) throw new PythonServiceError('Request cancelled by the client.', 499);
+        if (opts.signal?.aborted) throw new PythonServiceError('Request cancelled by the client.', 499);
         throw new PythonServiceError('The analysis service is unreachable.', 502);
       }
 
       if (!res.ok) {
         const detail = await readDetail(res);
-        // Pass client errors (bad image, bad key) through; hide Python crashes behind a 502.
         throw new PythonServiceError(detail, res.status >= 400 && res.status < 500 ? res.status : 502);
       }
-      return (await res.json()) as AnalyzeResponse;
+      return res;
     } finally {
       clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
+      opts.signal?.removeEventListener('abort', onAbort);
     }
   }
 
-  return { analyzeMeal };
+  async function analyzeMeal(
+    image: Uint8Array,    
+    mimeType: string,
+    userId: string,
+    signal?: AbortSignal,
+  ): Promise<AnalyzeResponse> {
+    const form = new FormData();
+    form.append('image', new Blob([new Uint8Array(image)], { type: mimeType }), 'meal.jpg');
+
+    // fetch sets the multipart boundary itself, so no Content-Type here.
+    const res = await request('/analyze', { method: 'POST', body: form, userId, signal });
+    return (await res.json()) as AnalyzeResponse;
+  }
+
+  async function estimateMeal(
+    payload: EstimateRequest,
+    userId: string,
+    signal?: AbortSignal,
+  ): Promise<EstimateResponse> {
+    const res = await request('/estimate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), userId, signal });
+    return (await res.json()) as EstimateResponse;
+  }
+
+  /** Best-effort: never throws, since a failed cancel shouldn't break the caller. */
+  async function cancelAnalysis(id: string, userId: string,): Promise<void> {
+    try {
+      await request(`/cancel/${encodeURIComponent(id)}`, { method: 'POST', userId, timeoutMs: 5000 });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return { analyzeMeal, estimateMeal, cancelAnalysis };
 }

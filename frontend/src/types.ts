@@ -58,10 +58,16 @@ export type MealItem = {
 }
 
 export type SavedMeal = {
+  _id: string
   name: string
   kcal: number
   protein: number
   carbs: number
   fat: number
   items: MealItem[]
+}
+
+export type LoggedMeal = MealMacros & {
+  localId: string                          
+  saved?: { date: string; id: string }     
 }

@@ -1,12 +1,10 @@
-import express, { Router } from 'express'
-import { macrosForMeal } from '../helpers/foods'
-import { createPythonClient, PythonServiceError } from '../helpers/pythonClient';
+import express, { Router } from 'express';
 import multer from 'multer';
+import { macrosForMeal } from '../helpers/foods';
+import { createPythonClient, PythonServiceError } from '../helpers/pythonClient';
+import { requireUser, getUserId } from '../middleware';
 
-const router = Router()
-
-const PYTHON_URL = process.env.PYTHON_URL ?? 'http://127.0.0.1:8000';
-const PYTHON_TIMEOUT_MS = Number(process.env.PYTHON_TIMEOUT_MS ?? 180000);
+const router = Router();
 
 const python = createPythonClient({
   baseUrl: process.env.PYTHON_URL ?? 'http://127.0.0.1:8000',
@@ -16,33 +14,33 @@ const python = createPythonClient({
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
-router.post('/api/cancel/:id', async (req, res) => {
-  const id = req.params.id
-  if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' })
+/** Aborts when the phone disconnects before we've finished responding. */
+function abortOnDisconnect(res: express.Response): AbortController {
+  const ctrl = new AbortController();
+  res.on('close', () => {
+    if (!res.writableFinished) ctrl.abort();
+  });
+  return ctrl;
+}
 
-  await fetch(`${PYTHON_URL}/cancel/${encodeURIComponent(id)}`, { method: 'POST' }).catch(() => {})
-  res.json({ ok: true })
-})
+router.post('/api/cancel/:id', requireUser, async (req, res) => {
+  const id = req.params.id;
+  if (typeof id !== 'string' || id === '') return res.status(400).json({ error: 'id required' });
 
-router.post('/analyze', upload.single('image'), async (req, res) => {
+  await python.cancelAnalysis(id, getUserId(res));
+  res.json({ ok: true });
+});
+
+router.post('/analyze', requireUser, upload.single('image'), async (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: 'An "image" file is required.' });
     return;
   }
 
-  // If the phone gives up, stop waiting on Python too.
-  const clientGone = new AbortController();
-  res.on('close', () => {
-    if (!res.writableFinished) clientGone.abort();
-  });
+  const clientGone = abortOnDisconnect(res);
 
   try {
-    const result = await python.analyzeMeal(
-      req.file.buffer,
-      req.file.mimetype,
-      clientGone.signal,
-    );
-    console.log(result)
+    const result = await python.analyzeMeal(req.file.buffer, req.file.mimetype, getUserId(res), clientGone.signal);
     res.json(result);
   } catch (e) {
     if (e instanceof PythonServiceError) {
@@ -54,50 +52,33 @@ router.post('/analyze', upload.single('image'), async (req, res) => {
   }
 });
 
-router.post('/estimate', express.json(), async (req, res) => {
+router.post('/estimate', requireUser, express.json(), async (req, res) => {
   const { session_id, containers, foods } = req.body ?? {};
   if (!session_id || !Array.isArray(containers)) {
     return res.status(400).json({ detail: 'session_id and containers are required.' });
   }
 
-  const clientGone = new AbortController()
-  let timedOut = false
-  res.on('close', () => { if (!res.writableFinished) clientGone.abort() })
-  const timer = setTimeout(() => { timedOut = true; clientGone.abort() }, PYTHON_TIMEOUT_MS)
+  const clientGone = abortOnDisconnect(res);
 
   try {
-    const upstream = await fetch(`${PYTHON_URL}/estimate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(process.env.PYTHON_API_KEY ? { 'x-internal-key': process.env.PYTHON_API_KEY } : {}),
-      },
-      body: JSON.stringify({ session_id, containers, foods }),
-      signal: clientGone.signal,
-    });
-    const body = await upstream.json().catch(() => ({}));
-    console.log(body)
-    res.status(upstream.status).json(body);         
+    const result = await python.estimateMeal({ session_id, containers, foods }, getUserId(res), clientGone.signal );
+    res.json(result);
   } catch (e) {
-    console.log(e)
-    if (timedOut) return res.status(504).json({ detail: 'The analysis took too long.' })
-    if (clientGone.signal.aborted) return
-    return res.status(502).json({ detail: 'Could not reach the analysis server.' });
-  } finally {
-    clearTimeout(timer)
+    if (e instanceof PythonServiceError) {
+      if (e.status !== 499) res.status(e.status).json({ detail: e.message });
+      return;
+    }
+    console.error(e);
+    res.status(500).json({ detail: 'Unexpected server error.' });
   }
 });
 
-router.post('/convert', express.json(), async(req, res) => {
-  console.log('macros body:', req.headers['content-type'], JSON.stringify(req.body));
+router.post('/convert', requireUser, express.json(), async (req, res) => {
   const { volumes } = req.body ?? {};
   if (!Array.isArray(volumes)) {
     return res.status(400).json({ detail: 'volumes are required.' });
   }
+  res.status(200).json(macrosForMeal(volumes));
+});
 
-  const macros = macrosForMeal(volumes)
-  console.log(macros)
-  res.status(200).json(macros)
-})
-
-export default router
+export default router;

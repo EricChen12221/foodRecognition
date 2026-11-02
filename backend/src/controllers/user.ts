@@ -6,7 +6,8 @@ import mealHelper from '../services/meal'
 import goalsHelper from '../services/goals'
 import profilesHelper from '../services/profiles'
 
- 
+import { requireUser } from '../middleware' 
+
 const router = Router()
  
 const DEFAULT_GOALS = { kcal: 2000, protein: 120, carbs: 220, fat: 65 }
@@ -51,17 +52,6 @@ router.post('/session', express.json(), async (req, res) => {
  
   res.json(user)
 })
- 
-export async function requireUser(req: Request, res: Response, next: NextFunction) {
-  const token = /^Bearer ([0-9a-f]{64})$/.exec(req.header('authorization') ?? '')?.[1]
-  const user = token ? await User.findOne({ tokenHash: hash(token) }) : null
- 
-  if (!user) {
-    return res.status(401).json({ error: 'Not signed in.' })
-  }
-  res.locals.user = user
-  next()
-}
  
 const handle =
   (fn: (req: Request, res: Response) => Promise<void> | void) =>
@@ -145,6 +135,14 @@ router.post('/dailyMacros/meal', requireUser, handle(async (req, res) => {
   }
 
   res.status(201).json(await mealHelper.addMeal(res.locals.user.id, date, name.trim(), foods))
+}))
+
+router.delete('/dailyMacros/:date/meals/:mealId', requireUser, handle(async (req, res) => {
+  const date = paramOf(req, 'date')
+  const mealId = paramOf(req, 'mealId')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('date must look like "2026-10-27".')
+
+  res.json(await mealHelper.deleteMeal(res.locals.user.id, date, mealId))
 }))
 
 export default router

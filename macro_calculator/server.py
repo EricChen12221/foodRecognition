@@ -130,12 +130,20 @@ def create_app():
     analysis_lock = asyncio.Lock()         
     sessions = {}
     cancel_flags: Dict[str, threading.Event] = {}
-    latest_analyze = {"n": 0}
+
+    MAX_SESSIONS = 20
+    MAX_WAITING = 4                      # people queued behind the one running
+    counter = {"n": 0}
+    latest_analyze: Dict[str, int] = {}  # user id -> that user's newest /analyze number
+    waiting = {"n": 0}
 
     def purge_old_sessions():
         now = time.time()
         for k in [k for k, v in list(sessions.items()) if now - v["created"] > SESSION_TTL_S]:
             sessions.pop(k, None)
+        while len(sessions) > MAX_SESSIONS:                      # memory cap: each session holds a photo and masks
+            oldest = min(sessions, key=lambda k: sessions[k]["created"])
+            sessions.pop(oldest, None)
 
     def warm_up():
         path = os.path.join(os.path.dirname(__file__), "yumgrub.jpg")
@@ -170,8 +178,14 @@ def create_app():
     async def run_cancellable(request: Request, request_id: str, work, superseded=lambda: False):
         """Run work(should_stop) in a thread, one at a time. Raises Cancelled if it should not run or must stop."""
         flag = flag_for(request_id)
+        if waiting["n"] >= MAX_WAITING:
+            raise HTTPException(status_code=429, detail="The server is busy. Try again in a moment.")
+        counted = True
+        waiting["n"] += 1
         try:
             async with analysis_lock:
+                waiting["n"] -= 1
+                counted = False
                 if flag.is_set() or superseded() or await request.is_disconnected():
                     raise Cancelled()        # cancelled, replaced or abandoned while waiting in line: never start
 
@@ -191,6 +205,8 @@ def create_app():
                 finally:
                     watcher.cancel()
         finally:
+            if counted:
+                waiting["n"] -= 1                                # left the line without ever getting the lock
             cancel_flags.pop(request_id, None)
 
     @app.post("/analyze")
@@ -198,11 +214,14 @@ def create_app():
         request: Request,
         image: UploadFile = File(...),
         x_request_id: Optional[str] = Header(None),
+        x_user_id: Optional[str] = Header(None),
     ):
+        user = x_user_id or "anonymous"
         request_id = x_request_id or uuid.uuid4().hex
-        latest_analyze["n"] += 1
-        mine = latest_analyze["n"]                       # a newer photo will make this one obsolete
-        superseded = lambda: latest_analyze["n"] != mine
+        counter["n"] += 1
+        mine = counter["n"]
+        latest_analyze[user] = mine                                   # per user, not global
+        superseded = lambda: latest_analyze.get(user) != mine
 
         raw = await image.read()
         try:
@@ -223,10 +242,13 @@ def create_app():
             print("analyze cancelled: client left")
             return Response(status_code=499)             # nobody is listening, so this is only for the log
 
+        for k in [k for k, v in sessions.items() if v.get("owner") == user]:
+            sessions.pop(k, None)                                     # one session per user: old photo is replaced
         purge_old_sessions()
         session_id = uuid.uuid4().hex
         sessions[session_id] = {
             "created": time.time(),
+            "owner": user,
             "image": img,
             "foods": foods,
             "containers": containers,
@@ -243,12 +265,12 @@ def create_app():
         request: Request,
         session_id: str = Body(...),
         containers: List[Dict[str, Any]] = Body(default=[]),
-        # Foods the user kept: {"id": "food_3"} or {"id": "food_3", "newLabel": "muffin"}. None = all detected foods.
         foods: Optional[List[Dict[str, Any]]] = Body(default=None),
         x_request_id: Optional[str] = Header(None),
+        x_user_id: Optional[str] = Header(None)
     ):
         s = sessions.get(session_id)
-        if s is None:
+        if s is None or s.get("owner") != (x_user_id or "anonymous"):
             raise HTTPException(status_code=404, detail="Session expired or unknown. Re-upload the photo.")
 
         if foods is None:

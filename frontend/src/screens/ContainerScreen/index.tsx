@@ -163,14 +163,6 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
     >
       <Text style={styles.title}>Log meal</Text>
 
-      <View style={styles.photoCard}>
-        <Image
-          source={{ uri: `file://${path}` }}
-          style={styles.photo}
-          resizeMode="cover"
-        />
-      </View>
-
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Plateware profiles</Text>
         <Text style={styles.sectionHint}>
@@ -227,18 +219,6 @@ const styles = StyleSheet.create({
   screenContent: { padding: 20, paddingBottom: 40, gap: 20 },
 
   title: { fontSize: 18, fontWeight: '700', color: '#1b2420' },
-
-  photoCard: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    backgroundColor: '#e6ebe7',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  photo: { width: '100%', aspectRatio: 4 / 3 },
 
   section: { gap: 6 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: '#1b2420' },

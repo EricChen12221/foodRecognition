@@ -1,12 +1,18 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import type { MealMacros } from '../../../types';
+import { StyleSheet, Text, View, Alert, Pressable } from 'react-native';
+import type { LoggedMeal } from '../../../types';
 
 const r = (n: number) => Math.round(n);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function MealCard({ meal }: { meal: MealMacros }) {
+function MealCard({ meal, onDelete }: { meal: LoggedMeal; onDelete?: (meal: LoggedMeal) => void }) {
   const { items, total } = meal;
+
+  const confirmRemove = () =>
+    Alert.alert('Remove this meal?', "It will also come off that day's totals.", [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => onDelete?.(meal) },
+    ])
 
   return (
     <View style={styles.card}>
@@ -41,18 +47,23 @@ function MealCard({ meal }: { meal: MealMacros }) {
           )}
         </View>
       ))}
+      {onDelete ? (
+        <Pressable onPress={confirmRemove} style={styles.removeBtn} accessibilityRole="button">
+          <Text style={styles.removeText}>Remove meal</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
-export function Meals({ meals }: { meals: MealMacros[] }) {
+export function Meals({ meals, onDelete }: { meals: LoggedMeal[]; onDelete?: (meal: LoggedMeal) => void }) {
   if (meals.length === 0) {
     return 
   }
   return (
     <View style={styles.list}>
-      {meals.map((m, i) => (
-        <MealCard key={i} meal={m} />
+      {meals.map((m) => (
+        <MealCard key={m.localId} meal={m} onDelete={onDelete} />
       ))}
     </View>
   );
@@ -76,6 +87,9 @@ const styles = StyleSheet.create({
   range: { fontSize: 13, color: '#66706b' },
   macroRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 6 },
   macro: { fontSize: 14, color: '#1b2420' },
+
+  removeBtn: { alignSelf: 'flex-start', paddingTop: 6 },
+  removeText: { fontSize: 14, color: '#c0392b' },
 
   divider: { height: 1, backgroundColor: '#dde3df' },
 

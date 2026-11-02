@@ -58,6 +58,12 @@ export const getDailyMacros = () => request<DailyMacros[]>('/dailyMacros')
 export const addMeal = (entry: { date: string; name: string; foods: MealItem[] }) =>
   request<{ meal: SavedMeal; day: DailyMacros }>('/dailyMacros/meal', { method: 'POST', body: entry })
 
+export const deleteMeal = (date: string, mealId: string) =>
+  request<{ day: DailyMacros | null }>(
+    `/dailyMacros/${encodeURIComponent(date)}/meals/${encodeURIComponent(mealId)}`,
+    { method: 'DELETE' },
+  )
+
 /** Flattens the macro result into the items the server stores. Foods with no estimate are skipped. */
 export const toMealItems = (meal: MealMacros): MealItem[] => {
   const r1 = (n: number) => Math.round(n * 10) / 10
