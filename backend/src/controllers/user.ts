@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import express, { Router, type NextFunction, type Request, type Response } from 'express'
+import express, { Router, type Request, type Response } from 'express'
 import User from '../models/user' 
 
 import mealHelper from '../services/meal'

@@ -13,7 +13,7 @@ export const getUserId = (res: Response): string =>
 export async function requireUser(req: Request, res: Response, next: NextFunction) {
   const token = /^Bearer ([0-9a-f]{64})$/.exec(req.header('authorization') ?? '')?.[1]
   const user = token ? await User.findOne({ tokenHash: hash(token) }) : null
- 
+  
   if (!user) {
     return res.status(401).json({ error: 'Not signed in.' })
   }

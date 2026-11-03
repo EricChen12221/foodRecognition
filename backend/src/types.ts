@@ -1,15 +1,15 @@
 import { Types } from 'mongoose';
 
+
 export interface MealItemJson {
   _id?: Types.ObjectId;
-  name: string;
-  quantity: number;
-  unit: string;
 
+  label: string;
+  grams: number;
   kcal: number;
   protein: number;
-  carbs: number;
   fat: number;
+  carbs: number;
 }
 
 export interface MealJson {

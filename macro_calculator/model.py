@@ -157,9 +157,8 @@ def estimateVolume(food_masks, container_masks, image, should_stop=lambda: False
             raise Cancelled()
         
     image = image.convert("RGB")
-
-    check()
     
+    check()
     r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
     depth_map, focal_length = r["depth"], r["focal_px"]
     print(depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length)
