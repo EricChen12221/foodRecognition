@@ -1,52 +1,45 @@
 import React from 'react';
 import { StyleSheet, Text, View, Alert, Pressable } from 'react-native';
-import type { LoggedMeal } from '../../../types';
+import type { SavedMeal } from '../../../types';
 
 const r = (n: number) => Math.round(n);
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function MealCard({ meal, onDelete }: { meal: LoggedMeal; onDelete?: (meal: LoggedMeal) => void }) {
-  const { items, total } = meal;
+function MealCard({ meal, onDelete }: { meal: SavedMeal; onDelete?: (meal: SavedMeal) => void }) {
+  const { items, name, kcal, protein, carbs, fat } = meal;
 
   const confirmRemove = () =>
     Alert.alert('Remove this meal?', "It will also come off that day's totals.", [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => onDelete?.(meal) },
-    ])
+    ]);
 
   return (
     <View style={styles.card}>
       {/* total */}
       <View style={styles.totalBlock}>
-        <Text style={styles.kcal}>{r(total.estimate.kcal)} kcal</Text>
-        <Text style={styles.range}>
-          about {r(total.low.kcal)} to {r(total.high.kcal)}
-        </Text>
+        <Text style={styles.range}>{name}</Text>
+        <Text style={styles.kcal}>{r(kcal)} kcal</Text>
         <View style={styles.macroRow}>
-          <Text style={styles.macro}>Protein {r(total.estimate.protein)} g</Text>
-          <Text style={styles.macro}>Carbs {r(total.estimate.carbs)} g</Text>
-          <Text style={styles.macro}>Fat {r(total.estimate.fat)} g</Text>
+          <Text style={styles.macro}>Protein {r(protein)} g</Text>
+          <Text style={styles.macro}>Carbs {r(carbs)} g</Text>
+          <Text style={styles.macro}>Fat {r(fat)} g</Text>
         </View>
       </View>
 
       <View style={styles.divider} />
 
       {/* items */}
-      {items.map((item) => (
-        <View key={item.id} style={styles.itemRow}>
+      {items.map((item, i) => (
+        <View key={`${item.label}-${i}`} style={styles.itemRow}>
           <View style={styles.itemName}>
-            <Text style={styles.itemLabel}>{cap(item.id)}</Text>
-            {item.macros ? (
-              <Text style={styles.itemSub}>{r(item.macros.estimate.grams)} g</Text>
-            ) : null}
+            <Text style={styles.itemLabel}>{cap(item.label)}</Text>
+            <Text style={styles.itemSub}>{r(item.grams)} g</Text>
           </View>
-          {item.macros ? (
-            <Text style={styles.itemKcal}>{r(item.macros.estimate.kcal)} kcal</Text>
-          ) : (
-            <Text style={styles.noEstimate}>no estimate</Text>
-          )}
+          <Text style={styles.itemKcal}>{r(item.kcal)} kcal</Text>
         </View>
       ))}
+
       {onDelete ? (
         <Pressable onPress={confirmRemove} style={styles.removeBtn} accessibilityRole="button">
           <Text style={styles.removeText}>Remove meal</Text>
@@ -56,14 +49,14 @@ function MealCard({ meal, onDelete }: { meal: LoggedMeal; onDelete?: (meal: Logg
   );
 }
 
-export function Meals({ meals, onDelete }: { meals: LoggedMeal[]; onDelete?: (meal: LoggedMeal) => void }) {
+export function Meals({ meals, onDelete }: { meals: SavedMeal[]; onDelete?: (meal: SavedMeal) => void }) {
   if (meals.length === 0) {
-    return 
+    return <Text style={styles.empty}>No meals logged yet</Text>;
   }
   return (
     <View style={styles.list}>
       {meals.map((m) => (
-        <MealCard key={m.localId} meal={m} onDelete={onDelete} />
+        <MealCard key={m._id} meal={m} onDelete={onDelete} />
       ))}
     </View>
   );

@@ -1,8 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import type { MealMacros } from '../../../types';
-
-export type Goals = { kcal: number; protein: number; carbs: number; fat: number };
+import type { Goals, SavedMeal } from '../../../types';
 
 // Placeholder targets. Pass your own `goals` prop (e.g. from the Profile tab) to override.
 export const DEFAULT_GOALS: Goals = { kcal: 2000, protein: 120, carbs: 220, fat: 65 };
@@ -13,8 +11,8 @@ const AMBER = '#c27a12';   // used when a value goes over its goal
 type Key = keyof Goals;
 
 const r = (n: number) => Math.round(n);
-const total = (meals: MealMacros[], key: Key) =>
-  meals.reduce((t, m) => t + m.total.estimate[key], 0);
+const total = (meals: SavedMeal[], key: Key) =>
+  meals.reduce((t, m) => t + m[key], 0);
 
 function Bar({ value, goal, color }: { value: number; goal: number; color: string }) {
   const pct = goal > 0 ? Math.min(value / goal, 1) : 0;
@@ -41,7 +39,7 @@ function MacroColumn({ label, value, goal }: { label: string; value: number; goa
   );
 }
 
-export function GoalCard({ meals, goals = DEFAULT_GOALS }: { meals: MealMacros[]; goals?: Goals }) {
+export function GoalCard({ meals, goals = DEFAULT_GOALS }: { meals: SavedMeal[]; goals?: Goals }) {
   const kcal = total(meals, 'kcal');
   const protein = total(meals, 'protein');
   const carbs = total(meals, 'carbs');

@@ -4,7 +4,7 @@
 // daily totals, fills them from the signed-in account, and saves every edit through the API.
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
-import type { DayTotals, Goals, Profile } from '../types';
+import type { DayTotals, Goals, Profile, SavedMeal, DailyMacros } from '../types';
 import { DEFAULT_GOALS } from '../settings';
 import * as data from '../services/data';
 import type { Session } from '../services/session';
@@ -16,13 +16,21 @@ export function useAccount(session: Session | null) {
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [days, setDays] = useState<Record<string, DayTotals>>({});
+  const [meals, setMeals] = useState<SavedMeal[]>([]);
 
-  // When sign-in finishes, the account it returned already has everything: no extra requests.
+  const todayKey = () => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+
   useEffect(() => {
     if (!session) return;
+    const list = session.account.dailyMacros as DailyMacros[];
     setGoals(session.account.goals);
     setProfiles(session.account.profiles);
-    setDays(data.toDaysMap(session.account.dailyMacros as data.DailyMacros[]));
+    setDays(data.toDaysMap(list));
+    setMeals(data.mealsForDate(list, todayKey()));   // new
   }, [session]);
 
   // goals
@@ -87,7 +95,7 @@ export function useAccount(session: Session | null) {
       return next
   })
 
-  return { goals, profiles, days, recordDay, removeDay, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile }
+  return { goals, profiles, days, meals, recordDay, removeDay, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile }
 }
 
 export type AccountData = ReturnType<typeof useAccount>;

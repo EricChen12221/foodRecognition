@@ -67,7 +67,4 @@ export type SavedMeal = {
   items: MealItem[]
 }
 
-export type LoggedMeal = MealMacros & {
-  localId: string                          
-  saved?: { date: string; id: string }     
-}
+export type DailyMacros = DayTotals & { date: string; id?: string; meals: SavedMeal[] }

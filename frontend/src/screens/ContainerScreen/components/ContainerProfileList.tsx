@@ -1,7 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Profile, Container } from '../../../types'
 
-
 type Props = {
   containers: Container[];
   profiles: Profile[];

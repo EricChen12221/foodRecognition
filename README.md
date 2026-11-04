@@ -139,6 +139,5 @@ The values are approximate, so check the ones you rely on and add the foods you 
 - [x] Anonymous accounts, goals and progress calendar
 - [x] Logging meals into daily totals
 - [X] Remove a logged meal from the Tracker
-- [ ] Load today's meals into the Tracker at startup
+- [X] Load today's meals into the Tracker at startup
 - [ ] Better detection for mixed dishes and rice
-- [ ] Support for several users

@@ -1,12 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { BASE, KEY } from './session'
-import type { DayTotals, Goals, Profile, MealMacros, MealItem, SavedMeal } from '../types'
+import type { DayTotals, Goals, Profile, MealMacros, MealItem, SavedMeal, DailyMacros } from '../types'
  
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
  
 /** One logged day. `date` looks like "2026-10-27". */
-export type DailyMacros = DayTotals & { date: string; id?: string }
- 
+
 /** Thrown for any failed request. `status` lets screens react, e.g. 401 means sign in again. */
 export class ApiError extends Error {
   status: number
@@ -55,8 +54,11 @@ export const deleteProfile = (id: string) =>
 //daily macros
 export const getDailyMacros = () => request<DailyMacros[]>('/dailyMacros')
 
-export const addMeal = (entry: { date: string; name: string; foods: MealItem[] }) =>
-  request<{ meal: SavedMeal; day: DailyMacros }>('/dailyMacros/meal', { method: 'POST', body: entry })
+export const addMeal = (entry: { date: string; name: string; foods: MealItem[] }) => {
+  console.log(entry)
+  return request<{ meal: SavedMeal; day: DailyMacros }>('/dailyMacros/meal', { method: 'POST', body: entry })
+}
+  
 
 export const deleteMeal = (date: string, mealId: string) =>
   request<{ day: DailyMacros | null }>(
@@ -85,3 +87,6 @@ export const toDaysMap = (list: DailyMacros[]): Record<string, DayTotals> =>
   Object.fromEntries(
     list.map(({ date, kcal, protein, carbs, fat }) => [date, { kcal, protein, carbs, fat }]),
   )
+
+export const mealsForDate = (list: DailyMacros[], date: string): SavedMeal[] => 
+  list.find((d) => d.date === date)?.meals ?? []

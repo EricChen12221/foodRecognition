@@ -40,7 +40,7 @@ import { addMeal, deleteMeal, toMealItems } from './services/data'
 
 import { dayKey } from './screens/ProfileScreen/components/ProgressSection'
 
-import type { MealMacros, MealVolume, LoggedMeal } from './types';
+import type { MealVolume, SavedMeal, DailyMacros } from './types';
 import { useAccount } from './hooks/useAccount';
 
 
@@ -59,10 +59,15 @@ function App() {
   const [filePath, setFilePath] = useState<PhotoFile | undefined>()
   const [imageChosen, setImageChosen] = useState(false)
 
-  const [meals, setMeals] = useState<LoggedMeal[]>([]);
+  const [meals, setMeals] = useState<SavedMeal[]>([]);
 
   const [session, setSession] = useState<Session | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
+
+  const todayKey = () => {
+    const n = new Date();
+    return dayKey(n.getFullYear(), n.getMonth(), n.getDate());
+  };
 
   const signIn = useCallback(() => {
     setSignInError(null);
@@ -74,6 +79,12 @@ function App() {
   useEffect(() => { signIn(); }, [signIn]);
 
   const account = useAccount(session);
+
+  useEffect(() => {
+    if (!session) return;
+    const day = (session.account.dailyMacros as DailyMacros[]).find((d) => d.date === todayKey());
+    setMeals(day?.meals ?? []);
+  }, [session]);
 
   if (!session) {
     return (
@@ -131,40 +142,28 @@ function App() {
     setFilePath(undefined)
     try {
       const macros = await macroHelper.convertToMacros(volumes)
-      const localId = String(Date.now())
-      setMeals((prev) => [...prev, { ...macros, localId }])           // show it right away
-
       const foods = toMealItems(macros)
-      if (foods.length > 0) {
-        const now = new Date()
-        const { meal, day } = await addMeal({
-          date: dayKey(now.getFullYear(), now.getMonth(), now.getDate()),
-          name: mealNameForNow(),
-          foods,
-        })
-        account.recordDay(day.date, day)
-        // remember where it was saved, so it can be removed later
-        setMeals((prev) =>
-          prev.map((m) => (m.localId === localId ? { ...m, saved: { date: day.date, id: meal._id } } : m)),
-        )
+      if (foods.length === 0) {
+        Alert.alert('No estimate', "None of the foods could be estimated, so nothing was saved.")
+        return
       }
+      const { meal, day } = await addMeal({ date: todayKey(), name: mealNameForNow(), foods })
+      account.recordDay(day.date, day)
+      setMeals((prev) => [...prev, meal])
     } catch (e) {
       Alert.alert("Couldn't save the meal", e instanceof Error ? e.message : String(e))
     }
   }
 
-  const handleDeleteMeal = async (meal: LoggedMeal) => {
-    if (meal.saved) {
-      try {
-        const { day } = await deleteMeal(meal.saved.date, meal.saved.id)
-        if (day) account.recordDay(day.date, day)
-        else account.removeDay(meal.saved.date)
-      } catch (e) {
-        Alert.alert("Couldn't remove the meal", e instanceof Error ? e.message : String(e))
-        return                                  // keep the card if the server could not remove it
-      }
+  const handleDeleteMeal = async (meal: SavedMeal) => {
+    try {
+      const { day } = await deleteMeal(todayKey(), meal._id)
+      if (day) account.recordDay(day.date, day)
+      else account.removeDay(todayKey())
+      setMeals((prev) => prev.filter((m) => m._id !== meal._id))
+    } catch (e) {
+      Alert.alert("Couldn't remove the meal", e instanceof Error ? e.message : String(e))
     }
-    setMeals((prev) => prev.filter((m) => m.localId !== meal.localId))
   }
 
   if (useCam) {

@@ -124,6 +124,8 @@ router.get('/dailyMacros', requireUser, (_req, res) => {
 router.post('/dailyMacros/meal', requireUser, handle(async (req, res) => {
   const { name, date, foods } = req.body ?? {}
 
+  console.log(foods)
+
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
     throw new Error('date must look like "2026-10-27".')
   }

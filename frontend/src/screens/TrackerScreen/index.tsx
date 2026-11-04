@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
-import type { Goals, LoggedMeal } from '../../types';
+import type { Goals, SavedMeal } from '../../types';
 
 import { Meals } from './components/Meals';
 import { GoalCard, DEFAULT_GOALS } from './components/GoalCard';
@@ -10,9 +10,9 @@ export default function TrackerScreen({
   goals = DEFAULT_GOALS,
   onDeleteMeal
 }: {
-  meals: LoggedMeal[];
+  meals: SavedMeal[];
   goals?: Goals;
-  onDeleteMeal?: (meal: LoggedMeal) => void;
+  onDeleteMeal?: (meal: SavedMeal) => void;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
