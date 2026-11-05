@@ -14,6 +14,7 @@ from container_estimation import reconstruct_dish
 from food_alignment import assign_foods, diagnose
 from calculate_volume import calculate_food_volume
 from calibration import calibrate, volume_range
+from dish_calibration import reconstruct_with_record
 
 
 def dedupe_foods(foods, containment=0.4, iou_thresh=0.8):
@@ -118,8 +119,16 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
     # 2. every container, on the scaled depth
     reconstructions = {}
     for c in containers:
-        reconstructions[c["key"]] = reconstruct_dish(
-            scaled_depth, c["rim"]["ellipse_params"], c["mask"], food_union, focal_px)
+        args = (scaled_depth, c["rim"]["ellipse_params"], c["mask"], food_union, focal_px)
+        rec = c.get("shape_record")
+        if rec is not None:
+            r = reconstruct_with_record(*args, rec, rescale=False, units_per_mm=1e-3)   # depth is in meters here
+            if 0.9 <= r["rim_ratio"] <= 1.1:
+                reconstructions[c["key"]] = r
+                continue
+            print(f"{c['key']}: rim ratio {r['rim_ratio']:.2f}, so this does not look like the calibrated dish; "
+                  "fitting the shape instead")
+        reconstructions[c["key"]] = reconstruct_dish(*args)
 
     # 3. foods -> containers (the scaled depth must be used here too)
     assigned = assign_foods(foods, reconstructions, scaled_depth)

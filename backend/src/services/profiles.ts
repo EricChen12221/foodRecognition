@@ -1,12 +1,26 @@
 import mongoose from 'mongoose'
 import User from '../models/user'
  
-type ProfileJson = { id: string; label: string; diameter: number }
+type ProfileJson = { id: string; label: string; diameter: number; shape?: unknown }
  
 const profilesOf = (user: { toJSON: () => unknown }) => (user.toJSON() as any).profiles as ProfileJson[]
  
 function assertProfileId(profileId: string) {
   if (!mongoose.isValidObjectId(profileId)) throw new Error('Invalid profile id.')
+}
+
+async function setProfileShape(userId: string, profileId: string, shape: unknown) {
+  assertProfileId(profileId)
+  const user = await User.findOneAndUpdate(
+    { _id: userId, 'profiles._id': profileId },
+    { $set: { 'profiles.$.shape': { ...(shape as object), calibratedAt: new Date() } } },
+    { new: true, runValidators: true },
+  )
+  if (!user) throw new Error('Unknown user or profile.')
+
+  const updated = profilesOf(user).find((p) => String(p.id) === profileId)
+  if (!updated) throw new Error('Profile was not saved.')
+  return updated
 }
  
 async function makeProfile(userId: string, label: string, diameter: number) {
@@ -69,4 +83,4 @@ async function deleteProfile(userId: string, profileId: string) {
   return profilesOf(user)
 }
 
-export default { makeProfile, updateProfile, deleteProfile }
+export default { makeProfile, updateProfile, deleteProfile, setProfileShape }

@@ -6,6 +6,10 @@ import mealHelper from '../services/meal'
 import goalsHelper from '../services/goals'
 import profilesHelper from '../services/profiles'
 
+import { python } from '../helpers/python'
+import { upload, abortOnDisconnect } from '../helpers/upload'
+import { PythonServiceError } from '../helpers/pythonClient'
+
 import { requireUser } from '../middleware' 
 
 const router = Router()
@@ -59,10 +63,13 @@ const handle =
     try {
       await fn(req, res)
     } catch (e) {
+      if (e instanceof PythonServiceError) {
+        if (e.status !== 499) res.status(e.status).json({ error: e.message })  // 499 = client already gone
+        return
+      }
       res.status(400).json({ error: e instanceof Error ? e.message : 'Bad request.' })
     }
   }
- 
 
 function paramOf(req: Request, name: string): string {
   const value = req.params[name]
@@ -114,6 +121,29 @@ router.delete('/profiles/:profileId', requireUser, handle(async (req, res) => {
   const profileId = paramOf(req, 'profileId')
  
   res.json(await profilesHelper.deleteProfile(res.locals.user.id, profileId))   // the remaining profiles
+}))
+
+router.post('/profiles/:profileId/calibrate', requireUser, upload.single('image'), handle(async (req, res) => {
+  const profileId = paramOf(req, 'profileId')
+  if (!req.file) throw new Error('An "image" file is required.')
+
+  const profile = res.locals.user.profiles.id(profileId) // the diameter comes from the saved profile
+  if (!profile) throw new Error('Unknown profile.')
+
+  const measured = Number(req.body?.measured_depth_mm)
+  const clientGone = abortOnDisconnect(res)
+
+  const result = await python.calibrateProfile(
+    req.file.buffer,
+    req.file.mimetype,
+    res.locals.user.id,
+    profile.diameter,
+    Number.isFinite(measured) && measured > 0 ? measured : undefined,
+    clientGone.signal,
+  )
+
+  const updated = await profilesHelper.setProfileShape(res.locals.user.id, profileId, result.shape)
+  res.json({ profile: updated, warnings: result.warnings ?? [] })
 }))
  
 //dailyMacros

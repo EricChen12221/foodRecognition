@@ -1,27 +1,12 @@
 import express, { Router } from 'express';
 import multer from 'multer';
 import { macrosForMeal } from '../helpers/foods';
-import { createPythonClient, PythonServiceError } from '../helpers/pythonClient';
+import { PythonServiceError } from '../helpers/pythonClient';
+import { python } from '../helpers/python';
+import { upload, abortOnDisconnect } from '../helpers/upload';
 import { requireUser, getUserId } from '../middleware';
 
 const router = Router();
-
-const python = createPythonClient({
-  baseUrl: process.env.PYTHON_URL ?? 'http://127.0.0.1:8000',
-  apiKey: process.env.PYTHON_API_KEY,
-  timeoutMs: Number(process.env.PYTHON_TIMEOUT_MS ?? 180000),
-});
-
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
-
-/** Aborts when the phone disconnects before we've finished responding. */
-function abortOnDisconnect(res: express.Response): AbortController {
-  const ctrl = new AbortController();
-  res.on('close', () => {
-    if (!res.writableFinished) ctrl.abort();
-  });
-  return ctrl;
-}
 
 router.post('/api/cancel/:id', requireUser, async (req, res) => {
   const id = req.params.id;

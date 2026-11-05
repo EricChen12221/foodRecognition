@@ -6,6 +6,8 @@ from rim_detection import RimDetector
 from pipeline import measure_meal
 from server import Cancelled
 
+from dish_calibration import calibrate_dish, record_from_profile
+
 import torch
 import numpy as np
 from transformers import AutoProcessor, AutoModelForCausalLM
@@ -79,6 +81,31 @@ def pick_container(image, od_boxes, od_labels):
     cands = [b for b in cands if box_area(b) < MAX_CONTAINER_FRAC * img_area]
     return [{"box": max(cands, key=box_area)}] if cands else []
 
+def calibrateDish(image, diameter_m, measured_depth_mm=None):
+    """Photo of an EMPTY dish -> (record, warnings). Raises ValueError with a message for the user."""
+    image = image.convert("RGB")
+
+    od = run_florence(image, "<OD>")
+    containers = pick_container(image, od["bboxes"], od["labels"])
+    if not containers:
+        raise ValueError("Could not find the dish. Photograph it from above, filling most of the frame.")
+    box = containers[0]["box"]
+
+    predictor.set_image(np.array(image))
+    masks, _, _ = predictor.predict(box=np.array(box), multimask_output=False)
+    mask = masks[0]
+
+    r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
+    depth_map, focal = r["depth"], r["focal_px"]
+
+    rim = RimDetector().detect(image=image, container_box=box, container_mask=mask, depth=depth_map)
+    if rim is None or rim["arc_coverage"] < MIN_RIM_ARC:
+        raise ValueError("The rim was not clearly visible. Use a plain surface and good light.")
+
+    return calibrate_dish(
+        depth_map, rim["ellipse_params"], mask, diameter_m * 1000.0, focal,
+        measured_depth_mm=measured_depth_mm,
+    )
 
 def getFoodsAndContainers(image, should_stop=lambda: False):
     def check():
@@ -178,12 +205,14 @@ def estimateVolume(food_masks, container_masks, image, should_stop=lambda: False
             f"arc={rim['arc_coverage']:.2f}")
         rim_detector.draw_result(image, rim).save(f"rim_debug_{i}.jpg")
 
-        # NEW: a rim with little edge support is a fit to the wrong edges (e.g. the countertop)
         if rim["arc_coverage"] < MIN_RIM_ARC:
             print(f"Container {i}: rim not reliable (arc={rim['arc_coverage']:.2f}), skipping")
             continue
 
-        # NEW: the user's chosen profile (attached by the server) sets the scale
+        profile = container.get("radial_profile") or {}
+        shape_record = record_from_profile(profile)
+        print(f"Container {i}: dish shape {'from calibration' if shape_record else 'not calibrated (fitted)'}")
+
         profile = container.get("radial_profile") or {}
         containers_in.append({
             "key": f"container_{i}",
@@ -191,6 +220,7 @@ def estimateVolume(food_masks, container_masks, image, should_stop=lambda: False
             "mask": container["mask"],
             "container_class": "bowl" if "bowl" in str(profile.get("label", "")).lower() else "dinner_plate",
             "known_diameter_m": profile.get("diameter"),
+            "shape_record": shape_record, 
         })
 
     # NEW: fail with a readable message instead of an index error downstream

@@ -121,10 +121,11 @@ def serialize_containers(containers, img):
 
 def create_app():
     import asyncio
-    from fastapi import Body, FastAPI, File, Header, HTTPException, Request, Response, UploadFile
+    from fastapi import Body, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, Form
     from typing import Any, Dict, Optional
 
-    from model import getFoodsAndContainers, estimateVolume  # imported here so the models load once, at startup
+    from dish_calibration import shape_payload
+    from model import calibrateDish, getFoodsAndContainers, estimateVolume  # imported here so the models load once, at startup
 
     app = FastAPI()
     analysis_lock = asyncio.Lock()         
@@ -208,6 +209,34 @@ def create_app():
             if counted:
                 waiting["n"] -= 1                                # left the line without ever getting the lock
             cancel_flags.pop(request_id, None)
+
+    @app.post("/calibrate")
+    async def calibrate_endpoint(
+        request: Request,
+        image: UploadFile = File(...),
+        diameter_m: float = Form(...),
+        measured_depth_mm: Optional[float] = Form(None),
+        x_request_id: Optional[str] = Header(None),
+    ):
+        if not (0.05 <= diameter_m <= 0.8):
+            raise HTTPException(status_code=400, detail="diameter_m must be between 0.05 and 0.8.")
+        try:
+            img = load_upload(await image.read())
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        def work(should_stop):
+            with torch.inference_mode():
+                return calibrateDish(img, diameter_m, measured_depth_mm)
+
+        try:
+            record, warnings = await run_cancellable(request, x_request_id or uuid.uuid4().hex, work)
+        except Cancelled:
+            return Response(status_code=499)
+        except ValueError as e:                       # messages written for the user
+            raise HTTPException(status_code=422, detail=str(e))
+
+        return to_jsonable({"shape": shape_payload(record), "warnings": warnings})
 
     @app.post("/analyze")
     async def analyze(

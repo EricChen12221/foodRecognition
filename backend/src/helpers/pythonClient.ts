@@ -29,6 +29,11 @@ export interface EstimateRequest {
 // Tighten this to match what your /estimate endpoint actually returns.
 export type EstimateResponse = Record<string, unknown>;
 
+export interface CalibrateResponse {
+  shape: unknown; // tighten to whatever setProfileShape expects
+  warnings?: string[];
+}
+
 /** Carries the HTTP status your own API should answer with. */
 export class PythonServiceError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -137,5 +142,25 @@ export function createPythonClient({ baseUrl, timeoutMs = 180000, apiKey }: Pyth
     }
   }
 
-  return { analyzeMeal, estimateMeal, cancelAnalysis };
+  async function calibrateProfile(
+      image: Uint8Array,
+      mimeType: string,
+      userId: string,
+      diameterM: number,
+      measuredDepthMm?: number,
+      signal?: AbortSignal,
+    ): Promise<CalibrateResponse> {
+      const form = new FormData();
+      form.append('image', new Blob([new Uint8Array(image)], { type: mimeType }), 'dish.jpg');
+      form.append('diameter_m', String(diameterM));
+      if (measuredDepthMm !== undefined && Number.isFinite(measuredDepthMm) && measuredDepthMm > 0) {
+        form.append('measured_depth_mm', String(measuredDepthMm));
+      }
+
+      // No Content-Type here: fetch sets the multipart boundary itself.
+      const res = await request('/calibrate', { method: 'POST', body: form, userId, signal });
+      return (await res.json()) as CalibrateResponse;
+    }
+
+  return { analyzeMeal, estimateMeal, cancelAnalysis, calibrateProfile };
 }
