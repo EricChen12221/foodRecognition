@@ -1,4 +1,3 @@
-// src/hooks/useCameraCapture.ts
 import { useCallback, useEffect, useState } from 'react';
 import { useCameraDevice, useCameraPermission, usePhotoOutput } from 'react-native-vision-camera';
 
