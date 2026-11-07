@@ -11,9 +11,6 @@ import { CalibrateDishFlow } from './CalibrateDishFlow';
  *  - profile = null  -> "Add a profile" (empty form)
  *  - profile = {...} -> "Edit profile" (filled in, with a Delete option that asks to confirm, and
  *                       a "Dish shape" section that calibrates the dish from an empty-dish photo)
- * The delete confirmation and the calibration flow are drawn inside this one popup instead of using
- * Alert or a second Modal, because a native Alert or a second Modal opened on top of a Modal can end
- * up hidden or refused on iOS.
  */
 export function ProfileModal({
   visible, profile, canDelete, onSave, onDelete, onClose, onCalibrated,
