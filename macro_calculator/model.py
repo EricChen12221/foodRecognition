@@ -13,7 +13,7 @@ import numpy as np
 from transformers import AutoProcessor, AutoModelForCausalLM
 from segment_anything import sam_model_registry, SamPredictor
 from depth_estimation import estimate_depth
-from object_detection import filter_foods
+from macro_calculator.classifier import filter_foods
 
 #FIND FOOD AND SEGMENTATION
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")

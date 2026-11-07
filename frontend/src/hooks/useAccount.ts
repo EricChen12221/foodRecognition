@@ -81,6 +81,9 @@ export function useAccount(session: Session | null) {
       .then(setProfiles)                         // the server returns the remaining profiles
       .catch((e) => { setProfiles(before); fail("Couldn't delete the profile", e); });
   };
+
+  const applyProfile = (updated: Profile) =>
+    setProfiles((now) => now.map((p) => (p.id === updated.id ? updated : p)))
  
   const recordDay = (date: string, totals: DayTotals) =>
   setDays((prev) => ({
@@ -95,7 +98,7 @@ export function useAccount(session: Session | null) {
       return next
   })
 
-  return { goals, profiles, days, meals, recordDay, removeDay, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile }
+  return { goals, profiles, days, meals, recordDay, removeDay, changeGoal, resetGoals, addProfile, changeProfile, deleteProfile, applyProfile }
 }
 
 export type AccountData = ReturnType<typeof useAccount>;

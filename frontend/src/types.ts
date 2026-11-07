@@ -26,6 +26,15 @@ export type Profile = {
   id: string;
   label: string;
   diameter: number;
+  shape?: {                              // present once the dish has been calibrated
+    knotsZOverR: number[]
+    depthFrac: number
+    floorFrac: number
+    fitRms?: number
+    scaleFactor?: number
+    nPhotos?: number
+    calibratedAt?: string
+  }
 }
 
 export type Food = {

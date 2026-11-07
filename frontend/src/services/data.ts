@@ -17,19 +17,24 @@ export class ApiError extends Error {
 }
  
 /** Sends a request to /api/user<path> with the saved session token. Returns the parsed JSON. */
-async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T> {
   const token = await AsyncStorage.getItem(KEY)
-
   if (!token) throw new ApiError('Not signed in.', 401)
- 
+
+  const isForm = options.body instanceof FormData
   const res = await fetch(`${BASE}/user${path}`, {
     method: options.method ?? 'GET',
-    headers: { ...JSON_HEADERS, Authorization: `Bearer ${token}` },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    // no Content-Type for FormData: fetch adds the multipart boundary
+    headers: { ...(isForm ? {} : JSON_HEADERS), Authorization: `Bearer ${token}` },
+    body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
+    signal: options.signal,
   })
- 
-  const data = await res.json().catch(() => null)   // a failed request may not return JSON
-  if (!res.ok) throw new ApiError(data?.error ?? `Request failed (${res.status}).`, res.status)
+
+  const data = await res.json().catch(() => null) // a failed request may not return JSON
+  if (!res.ok) throw new ApiError(data?.error ?? data?.detail ?? `Request failed (${res.status}).`, res.status)
   return data as T
 }
  
@@ -51,6 +56,21 @@ export const updateProfile = (id: string, patch: { label?: string; diameter?: nu
 export const deleteProfile = (id: string) =>
   request<Profile[]>(`/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
  
+export async function calibrateProfile(id: string, imageUri: string, measuredDepthMm?: number) {
+  const form = new FormData()
+  form.append('image', {
+    uri: imageUri.startsWith('file://') ? imageUri : `file://${imageUri}`,
+    name: 'dish.jpg',
+    type: 'image/jpeg',
+  } as unknown as Blob)
+  if (measuredDepthMm) form.append('measured_depth_mm', String(measuredDepthMm))
+
+  return request<{ profile: Profile; warnings: string[] }>(
+    `/profiles/${encodeURIComponent(id)}/calibrate`,
+    { method: 'POST', body: form },
+  )
+}
+
 //daily macros
 export const getDailyMacros = () => request<DailyMacros[]>('/dailyMacros')
 
