@@ -1,0 +1,4 @@
+macro_calculator/FoodSeg103-Benchmark-v1/
+.venv/
+pretrained/
+__pycache__/
