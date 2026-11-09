@@ -27,7 +27,6 @@ export function CalibrateDishFlow({
   useEffect(() => () => { requestId.current++; abortRef.current?.abort(); }, []);
 
   const upload = async (photoPath: string) => {
-    Keyboard.dismiss();
     const mm = Number(depthText.replace(',', '.'));
     const myId = ++requestId.current;
     const controller = new AbortController();
@@ -85,7 +84,6 @@ export function CalibrateDishFlow({
     <View style={styles.root}>
       <CameraCapture
         guide
-        hint={`Empty ${profile.label.toLowerCase()}, straight from above, filling the ring. Plain surface, no shadows across the dish.`}
         useLabel={error ? 'Try again' : 'Use this photo'}
         onUse={upload}
         onCancel={onCancel}

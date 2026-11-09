@@ -5,8 +5,8 @@
 // While it is mounted the camera is on; when it unmounts the camera is released.
 import React, { useState } from 'react';
 import {
-  Image, KeyboardAvoidingView, Linking, Platform, Pressable, StatusBar, StyleSheet, Text, View,
-  useWindowDimensions,
+  Image, Linking, Pressable, StatusBar, StyleSheet, Text, View,
+  useWindowDimensions, Keyboard,
 } from 'react-native';
 import { Camera } from 'react-native-vision-camera';
 import { useCameraCapture } from '../hooks/useCameraCapture';
@@ -26,6 +26,11 @@ export function CameraCapture({
   const { width } = useWindowDimensions();
   const [photo, setPhoto] = useState<string | null>(null);
 
+  const handleUse = (photoPath: string) => {
+    Keyboard.dismiss();
+    onUse(photoPath);
+  };
+
   const shoot = async () => {
     const path = await takePhoto();
     if (path) setPhoto(path);
@@ -33,41 +38,35 @@ export function CameraCapture({
 
   // review
   if (photo) {
-    return (
-      <View style={[styles.root, styles.dark]}>
-        <StatusBar barStyle="light-content" />
-        <Image
-          source={{ uri: photo.startsWith('file://') ? photo : `file://${photo}` }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-        />
+  return (
+    <View style={[styles.root, styles.dark]}>
+      <StatusBar barStyle="light-content" />
+      <Image
+        source={{ uri: photo.startsWith('file://') ? photo : `file://${photo}` }}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+      />
 
-        <View style={styles.topBar}>
-          <Pressable onPress={onCancel} hitSlop={10} accessibilityRole="button">
-            <Text style={styles.topBarText}>Cancel</Text>
-          </Pressable>
-        </View>
-
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.panelWrap}
-        >
-          <View style={styles.panel}>
-            {previewExtra}
-            {previewNote ? <Text style={styles.error}>{previewNote}</Text> : null}
-            <View style={styles.buttonRow}>
-              <Pressable style={styles.secondary} onPress={() => setPhoto(null)} accessibilityRole="button">
-                <Text style={styles.secondaryText}>Retake</Text>
-              </Pressable>
-              <Pressable style={styles.primaryFlex} onPress={() => onUse(photo)} accessibilityRole="button">
-                <Text style={styles.primaryText}>{useLabel}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
+      <View style={[styles.topBar, styles.topBarRow]}>
+        <Pressable onPress={onCancel} hitSlop={10} accessibilityRole="button">
+          <Text style={styles.topBarText}>Cancel</Text>
+        </Pressable>
+        <Pressable onPress={() => setPhoto(null)} hitSlop={10} accessibilityRole="button">
+          <Text style={styles.topBarText}>Retake</Text>
+        </Pressable>
+        <Pressable onPress={() => handleUse(photo)} hitSlop={10} accessibilityRole="button">
+          <Text style={styles.topBarText}>{useLabel}</Text>
+        </Pressable>
       </View>
-    );
-  }
+
+      {previewNote ? (
+        <View style={styles.hintBox}>
+          <Text style={styles.error}>{previewNote}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
   // permission / no camera
   if (!hasPermission) {
@@ -151,13 +150,8 @@ const styles = StyleSheet.create({
   error: { fontSize: 13, color: '#ff8a80', textAlign: 'center' },
 
   primary: { marginTop: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 12, backgroundColor: '#14634b' },
-  primaryFlex: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#14634b' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  secondary: {
-    flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
-  },
-  secondaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+
   linkBtn: { paddingVertical: 10 },
   linkText: { fontSize: 15, color: '#14634b' },
 
@@ -167,7 +161,9 @@ const styles = StyleSheet.create({
     paddingTop: 62, paddingHorizontal: 20, paddingBottom: 12,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
+  topBarRow: { flexDirection: 'row', justifyContent: 'space-between' },
   topBarText: { color: '#fff', fontSize: 17 },
+  
   hintBox: {
     position: 'absolute', left: 20, right: 20, bottom: 150,
     padding: 12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.55)', gap: 4,
@@ -181,8 +177,4 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 8,
   },
   shutterBusy: { opacity: 0.5 },
-
-  panelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  panel: { padding: 20, paddingBottom: 40, gap: 10, backgroundColor: 'rgba(0,0,0,0.75)' },
-  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
 });

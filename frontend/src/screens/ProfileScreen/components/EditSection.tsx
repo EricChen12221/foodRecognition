@@ -66,6 +66,12 @@ export function EditSection({
   const openEdit = (p: Profile) => { setTarget(p); setVisible(true); };
   const close = () => setVisible(false);
 
+  const calibrated = (updated: Profile) => {
+    onCalibrated?.(updated);   // parent stores the new shape
+    setTarget(updated);        // keep the popup's copy in sync (see below)
+    close();
+  };
+
   const save = (label: string, diameter: number) => {
     if (target) onProfileChange(target.id, { label, diameter });
     else onProfileAdd(label, diameter);
@@ -156,7 +162,7 @@ export function EditSection({
         onSave={save}
         onDelete={remove}
         onClose={close}
-        onCalibrated={onCalibrated}
+        onCalibrated={calibrated}
       />
     </>
   );
