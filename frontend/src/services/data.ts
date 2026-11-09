@@ -56,7 +56,7 @@ export const updateProfile = (id: string, patch: { label?: string; diameter?: nu
 export const deleteProfile = (id: string) =>
   request<Profile[]>(`/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
  
-export async function calibrateProfile(id: string, imageUri: string, measuredDepthMm?: number) {
+export async function calibrateProfile(id: string, imageUri: string, measuredDepthMm?: number, signal?: AbortSignal,) {
   const form = new FormData()
   form.append('image', {
     uri: imageUri.startsWith('file://') ? imageUri : `file://${imageUri}`,
@@ -67,7 +67,7 @@ export async function calibrateProfile(id: string, imageUri: string, measuredDep
 
   return request<{ profile: Profile; warnings: string[] }>(
     `/profiles/${encodeURIComponent(id)}/calibrate`,
-    { method: 'POST', body: form },
+    { method: 'POST', body: form, signal },
   )
 }
 

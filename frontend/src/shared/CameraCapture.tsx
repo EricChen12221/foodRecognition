@@ -1,5 +1,3 @@
-// src/components/CameraCapture.tsx
-//
 // One full-screen "take a photo, then keep it or retake it" component, shared by the meal flow
 // (App.tsx) and the dish calibration flow. It owns the camera and the review screen, so the screen
 // that shows it needs no camera code at all.
@@ -71,7 +69,7 @@ export function CameraCapture({
     );
   }
 
-  // ------------------------------------------------------- permission / no camera
+  // permission / no camera
   if (!hasPermission) {
     return (
       <View style={[styles.root, styles.light, styles.center]}>
@@ -99,7 +97,7 @@ export function CameraCapture({
     );
   }
 
-  // -------------------------------------------------------------------- camera
+  // camera
   const ring = width * 0.86;
   return (
     <View style={[styles.root, styles.dark]}>

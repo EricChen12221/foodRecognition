@@ -166,6 +166,7 @@ export function ProfileModal({
                     <Text style={styles.primaryText}>{profile ? 'Save' : 'Add'}</Text>
                   </Pressable>
                 </View>
+                
 
                 {profile ? (
                   canDelete ? (

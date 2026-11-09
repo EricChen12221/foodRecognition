@@ -57,7 +57,7 @@ export function ProgressSection({
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      {/* ---------------- calendar ---------------- */}
+      {/* calendar */}
       <View style={styles.card}>
         <View style={styles.monthRow}>
           <Pressable onPress={() => shift(-1)} style={styles.arrow} accessibilityLabel="Previous month">

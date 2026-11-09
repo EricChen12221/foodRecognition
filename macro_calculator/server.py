@@ -227,7 +227,7 @@ def create_app():
 
         def work(should_stop):
             with torch.inference_mode():
-                return calibrateDish(img, diameter_m, measured_depth_mm)
+                return calibrateDish(img, diameter_m, measured_depth_mm, should_stop)
 
         try:
             record, warnings = await run_cancellable(request, x_request_id or uuid.uuid4().hex, work)

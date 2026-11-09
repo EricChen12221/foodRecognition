@@ -273,6 +273,41 @@ def reconstruct_with_record(depth_map, ellipse, container_mask, food_mask,
         "foods": [],
     }
 
+def record_from_profile(profile):
+    """
+    Inverse of shape_payload: rebuild the record dict reconstruct_with_record expects
+    from a stored profile. `profile` is a dict with the camelCase keys from shape_payload
+    plus the rim diameter.
+    """
+    shape = profile.get("shape", profile)           # accept nested or flat
+    knots_z = shape.get("knotsZOverR")
+    if not knots_z or len(knots_z) != len(KX):
+        raise ValueError("Profile has no calibration shape (or it was made with a different KX grid). "
+                         "Calibrate this dish first.")
+
+    # diameter: meters in the app -> mm here. Adjust if your API already sends mm.
+    if "rimDiameterMm" in profile:
+        d_mm = float(profile["rimDiameterMm"])
+    else:
+        d_mm = float(profile["diameter"]) * 1000.0
+
+    z = np.asarray(knots_z, dtype=float)
+    return {
+        "dish_id": profile.get("id", "dish"),
+        "rim_diameter_mm": d_mm,
+        "knots_x": KX.tolist(),
+        "knots_z_over_R": z.tolist(),
+        "depth_frac": float(shape.get("depthFrac", -z[0])),
+        "floor_frac": float(shape.get("floorFrac", 0.0)),
+        "depth_mm": float(-z[0] * d_mm / 2.0),
+        "measured_depth_mm": None,
+        "depth_error_pct": None,
+        "fit_rms_over_R": float(shape.get("fitRms", 0.0)),
+        "innermost_x": 0.0,
+        "scale_factor": float(shape.get("scaleFactor", 1.0)),
+        "n_photos": int(shape.get("nPhotos", 1)),
+    }
+
 def shape_payload(record):
     """What gets stored on the profile. No depth in mm: it is computed from depthFrac and the diameter."""
     return {

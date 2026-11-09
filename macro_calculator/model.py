@@ -13,7 +13,7 @@ import numpy as np
 from transformers import AutoProcessor, AutoModelForCausalLM
 from segment_anything import sam_model_registry, SamPredictor
 from depth_estimation import estimate_depth
-from macro_calculator.classifier import filter_foods
+from classifier import filter_foods
 
 #FIND FOOD AND SEGMENTATION
 device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
@@ -81,11 +81,18 @@ def pick_container(image, od_boxes, od_labels):
     cands = [b for b in cands if box_area(b) < MAX_CONTAINER_FRAC * img_area]
     return [{"box": max(cands, key=box_area)}] if cands else []
 
-def calibrateDish(image, diameter_m, measured_depth_mm=None):
+def calibrateDish(image, diameter_m, measured_depth_mm=None, should_stop=lambda: False):
     """Photo of an EMPTY dish -> (record, warnings). Raises ValueError with a message for the user."""
+    def check():
+        if should_stop():
+            raise Cancelled()
+            
     image = image.convert("RGB")
 
+    check()
     od = run_florence(image, "<OD>")
+    check()
+
     containers = pick_container(image, od["bboxes"], od["labels"])
     if not containers:
         raise ValueError("Could not find the dish. Photograph it from above, filling most of the frame.")
@@ -95,6 +102,7 @@ def calibrateDish(image, diameter_m, measured_depth_mm=None):
     masks, _, _ = predictor.predict(box=np.array(box), multimask_output=False)
     mask = masks[0]
 
+    check()
     r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
     depth_map, focal = r["depth"], r["focal_px"]
 
@@ -102,6 +110,7 @@ def calibrateDish(image, diameter_m, measured_depth_mm=None):
     if rim is None or rim["arc_coverage"] < MIN_RIM_ARC:
         raise ValueError("The rim was not clearly visible. Use a plain surface and good light.")
 
+    check()
     return calibrate_dish(
         depth_map, rim["ellipse_params"], mask, diameter_m * 1000.0, focal,
         measured_depth_mm=measured_depth_mm,

@@ -47,7 +47,7 @@ function NumberField({
 // This screen draws the form and the popup. The parent decides what each change does
 // (here: save it through the API).
 export function EditSection({
-  goals, profiles, onGoalChange, onProfileAdd, onProfileChange, onProfileDelete, onResetGoals,
+  goals, profiles, onGoalChange, onProfileAdd, onProfileChange, onProfileDelete, onResetGoals, onCalibrated
 }: {
   goals: Goals;
   profiles: Profile[];
@@ -56,6 +56,7 @@ export function EditSection({
   onProfileChange: (id: string, patch: { label?: string; diameter?: number }) => void;
   onProfileDelete: (id: string) => void;
   onResetGoals: () => void;
+  onCalibrated: (updated: Profile) => void;
 }) {
   // `visible` and `target` are separate so the popup keeps its content while it fades out.
   const [visible, setVisible] = useState(false);
@@ -92,7 +93,7 @@ export function EditSection({
         automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
-        {/* ---------------- goals ---------------- */}
+        {/* goals */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Daily goals</Text>
           <View style={styles.card}>
@@ -106,7 +107,7 @@ export function EditSection({
           </View>
         </View>
 
-        {/* ---------------- bowl profiles ---------------- */}
+        {/* bowl profiles  */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Bowl and plate profiles</Text>
           <Text style={styles.hint}>
@@ -155,6 +156,7 @@ export function EditSection({
         onSave={save}
         onDelete={remove}
         onClose={close}
+        onCalibrated={onCalibrated}
       />
     </>
   );

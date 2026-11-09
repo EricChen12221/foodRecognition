@@ -3,8 +3,8 @@
 // Lives inside the profile popup. The camera and the Use/Retake review are CameraCapture's job.
 // This file only adds what is specific to calibrating: an optional ruler depth, the upload, a
 // "measuring" overlay, and the result.
-import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraCapture } from '../../../shared/CameraCapture';
 import type { Profile } from '../../../types';
 import { calibrateProfile } from '../../../services/data';
@@ -20,22 +20,44 @@ export function CalibrateDishFlow({
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ profile: Profile; warnings: string[] } | null>(null);
+  const requestId = useRef(0);                       // lets us ignore a result that arrives after cancel
+  const abortRef = useRef<AbortController | null>(null);
+
+  // if the popup closes mid-upload, abort and don't touch state afterwards
+  useEffect(() => () => { requestId.current++; abortRef.current?.abort(); }, []);
 
   const upload = async (photoPath: string) => {
+    Keyboard.dismiss();
     const mm = Number(depthText.replace(',', '.'));
+    const myId = ++requestId.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setError(null);
     setWorking(true);
     try {
-      setResult(await calibrateProfile(profile.id, photoPath, Number.isFinite(mm) && mm > 0 ? mm : undefined));
+      const res = await calibrateProfile(
+        profile.id, photoPath,
+        Number.isFinite(mm) && mm > 0 ? mm : undefined,
+        controller.signal,
+      );
+      if (myId !== requestId.current) return;        // cancelled
+      setResult(res);
     } catch (e) {
-      // CameraCapture is still showing the photo, so the user can retry or retake
+      if (myId !== requestId.current) return;        // cancelled, so no error message
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setWorking(false);
+      if (myId === requestId.current) setWorking(false);
     }
   };
 
-  // -------------------------------------------------------------------- result
+  const cancelMeasuring = () => {
+    requestId.current++;                             // invalidates the in-flight call
+    abortRef.current?.abort();
+    setWorking(false);                               // back to the review screen
+  };
+
+  // result
   if (result) {
     const saved = result.profile;
     const mm = saved.shape ? Math.round(saved.shape.depthFrac * saved.diameter * 500) : null;
@@ -58,7 +80,7 @@ export function CalibrateDishFlow({
     );
   }
 
-  // ------------------------------------------------------ camera, review, upload
+  // camera, review, upload
   return (
     <View style={styles.root}>
       <CameraCapture
@@ -97,6 +119,9 @@ export function CalibrateDishFlow({
           <ActivityIndicator size="large" />
           <Text style={styles.title}>Measuring the dish…</Text>
           <Text style={styles.body}>This takes about 20 seconds.</Text>
+          <Pressable style={styles.secondary} onPress={cancelMeasuring} accessibilityRole="button">
+            <Text style={styles.secondaryText}>Cancel</Text>
+          </Pressable>
         </View>
       ) : null}
     </View>
@@ -114,6 +139,8 @@ const styles = StyleSheet.create({
 
   primary: { marginTop: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 12, backgroundColor: '#14634b' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  secondary: { marginTop: 8, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#14634b' },
+secondaryText: { color: '#14634b', fontSize: 16, fontWeight: '600' },
 
   extra: { gap: 8 },
   extraTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },

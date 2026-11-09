@@ -18,7 +18,7 @@ const ITEMS: { key: Section; label: string; hint: string }[] = [
 // This screen only keeps UI state: which section is showing and whether the menu is open.
 export default function ProfileScreen({
   goals, profiles, days,
-  changeGoal, resetGoals, addProfile, changeProfile, deleteProfile,
+  changeGoal, resetGoals, addProfile, changeProfile, deleteProfile, applyProfile
 }: AccountData) {
   const [section, setSection] = useState<Section>('edit');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -50,6 +50,7 @@ export default function ProfileScreen({
           onProfileChange={changeProfile}
           onProfileDelete={deleteProfile}
           onResetGoals={resetGoals}
+          onCalibrated={applyProfile}
         />
       ) : (
         <ProgressSection goals={goals} days={days} />
