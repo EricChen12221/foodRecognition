@@ -1,31 +1,77 @@
 // src/components/CameraCapture.tsx
 //
-// One full-screen "take a photo" screen, used by both the meal flow (App.tsx) and the dish
-// calibration flow. It owns the camera, so the screen that shows it needs no camera code at all.
+// One full-screen "take a photo, then keep it or retake it" component, shared by the meal flow
+// (App.tsx) and the dish calibration flow. It owns the camera and the review screen, so the screen
+// that shows it needs no camera code at all.
+//   camera  -> shutter -> review (Retake / Use) -> onUse(filePath)
 // While it is mounted the camera is on; when it unmounts the camera is released.
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  Linking, Pressable, StatusBar, StyleSheet, Text, View, useWindowDimensions,
+  Image, KeyboardAvoidingView, Linking, Platform, Pressable, StatusBar, StyleSheet, Text, View,
+  useWindowDimensions,
 } from 'react-native';
 import { Camera } from 'react-native-vision-camera';
 import { useCameraCapture } from '../hooks/useCameraCapture';
 
 export function CameraCapture({
-  onCapture, onCancel, hint, guide = false,
+  onUse, onCancel, hint, guide = false, useLabel = 'Use', previewExtra, previewNote,
 }: {
-  onCapture: (filePath: string) => void;   // called with the saved photo's path
-  onCancel: () => void;
-  hint?: string;                           // short instruction shown over the picture
+  onUse: (filePath: string) => void;       // the user accepted this photo
+  onCancel: () => void;                    // the user left without a photo
+  hint?: string;                           // short instruction shown over the camera
   guide?: boolean;                         // draw a ring to line a round dish up with
+  useLabel?: string;                       // text on the accept button of the review screen
+  previewExtra?: React.ReactNode;          // extra controls on the review screen (e.g. an input)
+  previewNote?: string | null;             // a message on the review screen (e.g. an error from the parent)
 }) {
   const { device, photoOutput, hasPermission, takePhoto, busy, error } = useCameraCapture();
   const { width } = useWindowDimensions();
+  const [photo, setPhoto] = useState<string | null>(null);
 
   const shoot = async () => {
     const path = await takePhoto();
-    if (path) onCapture(path);
+    if (path) setPhoto(path);
   };
 
+  // review
+  if (photo) {
+    return (
+      <View style={[styles.root, styles.dark]}>
+        <StatusBar barStyle="light-content" />
+        <Image
+          source={{ uri: photo.startsWith('file://') ? photo : `file://${photo}` }}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        />
+
+        <View style={styles.topBar}>
+          <Pressable onPress={onCancel} hitSlop={10} accessibilityRole="button">
+            <Text style={styles.topBarText}>Cancel</Text>
+          </Pressable>
+        </View>
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.panelWrap}
+        >
+          <View style={styles.panel}>
+            {previewExtra}
+            {previewNote ? <Text style={styles.error}>{previewNote}</Text> : null}
+            <View style={styles.buttonRow}>
+              <Pressable style={styles.secondary} onPress={() => setPhoto(null)} accessibilityRole="button">
+                <Text style={styles.secondaryText}>Retake</Text>
+              </Pressable>
+              <Pressable style={styles.primaryFlex} onPress={() => onUse(photo)} accessibilityRole="button">
+                <Text style={styles.primaryText}>{useLabel}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
+    );
+  }
+
+  // ------------------------------------------------------- permission / no camera
   if (!hasPermission) {
     return (
       <View style={[styles.root, styles.light, styles.center]}>
@@ -53,6 +99,7 @@ export function CameraCapture({
     );
   }
 
+  // -------------------------------------------------------------------- camera
   const ring = width * 0.86;
   return (
     <View style={[styles.root, styles.dark]}>
@@ -106,7 +153,13 @@ const styles = StyleSheet.create({
   error: { fontSize: 13, color: '#ff8a80', textAlign: 'center' },
 
   primary: { marginTop: 8, paddingHorizontal: 28, paddingVertical: 14, borderRadius: 12, backgroundColor: '#14634b' },
+  primaryFlex: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#14634b' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  secondary: {
+    flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)',
+  },
+  secondaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   linkBtn: { paddingVertical: 10 },
   linkText: { fontSize: 15, color: '#14634b' },
 
@@ -130,4 +183,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 6, elevation: 8,
   },
   shutterBusy: { opacity: 0.5 },
+
+  panelWrap: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  panel: { padding: 20, paddingBottom: 40, gap: 10, backgroundColor: 'rgba(0,0,0,0.75)' },
+  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
 });
