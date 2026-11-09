@@ -3,24 +3,16 @@ import 'react-native-gesture-handler'; // first line
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Alert,
-  Linking,
   Text,
   StatusBar,
   ActivityIndicator,
   StyleSheet,
   useColorScheme,
   View,
-  Image,
-  Button,
   TouchableOpacity,
+  Button
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-  usePhotoOutput,
-} from 'react-native-vision-camera';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import type { PhotoFile } from 'react-native-vision-camera';
@@ -43,20 +35,17 @@ import { dayKey } from './screens/ProfileScreen/components/ProgressSection'
 import type { MealVolume, SavedMeal, DailyMacros } from './types';
 import { useAccount } from './hooks/useAccount';
 
+import { CameraCapture } from './shared/CameraCapture'
+
+
 
 const Tab = createBottomTabNavigator();
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
-  const device = useCameraDevice('back');
-  const photoOutput = usePhotoOutput({});
-  const { hasPermission, requestPermission } = useCameraPermission();
-
   const [useCam, setUseCam] = useState(false);
-  const [photoTaken, setPhotoTaken] = useState(false);
-
-  const [filePath, setFilePath] = useState<PhotoFile | undefined>()
+  const [photoPath, setPhotoPath] = useState<string>('');
   const [imageChosen, setImageChosen] = useState(false)
 
   const [meals, setMeals] = useState<SavedMeal[]>([]);
@@ -101,37 +90,6 @@ function App() {
     );
   }
 
-  const openCamera = async () => {
-    if (hasPermission) {
-      setUseCam(true);
-      return;
-    }
-
-    const granted = await requestPermission();
-    if (granted) {
-      setUseCam(true);
-    } else {
-      Alert.alert(
-        'Camera access needed',
-        'Turn on camera access in Settings to take photos.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ],
-      );
-    }
-  };
-
-  const takePhoto = async () => {
-    try {
-      setFilePath(await photoOutput.capturePhotoToFile({}, {}));
-      console.log('Photo saved at:', filePath);
-      setPhotoTaken(true)
-    } catch (e) {
-      console.log('Failed to take photo', e);
-    }
-  };
-
   const mealNameForNow = () => {
     const h = new Date().getHours()
     return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 21 ? 'Dinner' : 'Snack'
@@ -139,7 +97,7 @@ function App() {
 
   const handleLogged = async (volumes: MealVolume[]) => {
     setImageChosen(false)
-    setFilePath(undefined)
+    setPhotoPath('')
     try {
       const macros = await macroHelper.convertToMacros(volumes)
       const foods = toMealItems(macros)
@@ -167,92 +125,24 @@ function App() {
   }
 
   if (useCam) {
-    if (device == null) {
-      Alert.alert(
-        'Camera Unavailable',
-        'We couldn\’t access a camera on this device. You can continue without using the camera.',
-        [
-          {
-            text: 'Continue',
-            style: 'default',
-          },
-        ],
-      );
-      setUseCam(false)
-      return
-    }
-    if (!photoTaken) {
-      return (
-        <SafeAreaProvider>
-          <StatusBar barStyle="light-content" />
-          <Camera
-            style={StyleSheet.absoluteFill}
-            device={device}
-            isActive={true}
-            outputs={[photoOutput]}
-          />
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.captureButton} onPress={takePhoto} />
-          </View>
-          <View style={styles.closeContainer}>
-            <Button title="Close" color="white" onPress={() => setUseCam(false)} />
-          </View>
-        </SafeAreaProvider>
-      );
-    } else {
-      return (
-        <>
-          {filePath && (
-            <SafeAreaProvider>
-              <StatusBar barStyle="light-content" />
-              <Image
-                source={{ uri: `file://${filePath.filePath}` }}
-                style={{ width: '100%', height: '100%' }}
-              />
-              <View style={styles.useContainer}>
-                <Button
-                  title="Use"
-                  color="white"
-                  onPress={() => {
-                    setUseCam(false);
-                    setPhotoTaken(false);
-                    setImageChosen(true)
-                  }}
-                />
-                <Button
-                  title="Retake"
-                  color="rgb(253, 209, 77)"
-                  onPress={() => {
-                    setUseCam(true);
-                    setPhotoTaken(false);
-                    setFilePath(undefined);
-                  }}
-                />
-                <View style={styles.closeLastItem}>
-                  <Button
-                    title="Close"
-                    color="white"
-                    onPress={() => {
-                      setUseCam(false);
-                      setPhotoTaken(false);
-                      setFilePath(undefined);
-                    }}
-                  />
-                </View>
-              </View>
-            </SafeAreaProvider>
-          )}
-        </>
-      );
-    }
+    return (
+    <CameraCapture
+      onUse={(path: string) => {
+        setPhotoPath(path)          // keep the photo
+        setUseCam(false)            // leave the camera
+        setImageChosen(true)        // go on to the meal screen
+      }}
+      onCancel={() => setUseCam(false)}
+    />
+    )
   }
 
-  if (imageChosen && filePath) {
+  if (imageChosen && photoPath) {
     return (
     <ContainerScreen
-      key={filePath.filePath}
-      path={filePath.filePath}
-      onCancel={() => { setImageChosen(false); setFilePath(undefined); }}
+      key={photoPath}
+      path={photoPath}
+      onCancel={() => { setImageChosen(false); setPhotoPath(''); }}
       onLogged={handleLogged}
       profiles={account.profiles}
     />
@@ -289,17 +179,11 @@ function App() {
         </Tab.Navigator>
       </NavigationContainer>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      {useCam && device && <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={true}
-        outputs={[photoOutput]}
-      />}
-      {!useCam && <View style={styles.buttonContainer}>
-      <TouchableOpacity style={styles.useCamButton} onPress={openCamera}>
-        <CameraIcon size={48} color="black" fillColor="white" />
-      </TouchableOpacity>
-    </View>}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.useCamButton} onPress={() => setUseCam(true)}>
+          <CameraIcon size={48} color="black" fillColor="white" />
+        </TouchableOpacity>
+      </View>
     </SafeAreaProvider>
   );
 }
