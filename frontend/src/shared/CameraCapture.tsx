@@ -51,12 +51,15 @@ export function CameraCapture({
         <Pressable onPress={onCancel} hitSlop={10} accessibilityRole="button">
           <Text style={styles.topBarText}>Cancel</Text>
         </Pressable>
-        <Pressable onPress={() => setPhoto(null)} hitSlop={10} accessibilityRole="button">
-          <Text style={styles.topBarText}>Retake</Text>
-        </Pressable>
-        <Pressable onPress={() => handleUse(photo)} hitSlop={10} accessibilityRole="button">
-          <Text style={styles.topBarText}>{useLabel}</Text>
-        </Pressable>
+
+        <View style={styles.topBarRight}>
+          <Pressable onPress={() => setPhoto(null)} hitSlop={10} accessibilityRole="button">
+            <Text style={[styles.topBarText, styles.retakeText]}>Retake</Text>
+          </Pressable>
+          <Pressable onPress={() => handleUse(photo)} hitSlop={10} accessibilityRole="button">
+            <Text style={styles.topBarText}>{useLabel}</Text>
+          </Pressable>
+        </View>
       </View>
 
       {previewNote ? (
@@ -162,6 +165,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   topBarRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 30 },
+  retakeText: { color: '#f5c518' },
   topBarText: { color: '#fff', fontSize: 17 },
   
   hintBox: {

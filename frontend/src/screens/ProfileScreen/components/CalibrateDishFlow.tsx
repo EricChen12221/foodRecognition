@@ -84,7 +84,7 @@ export function CalibrateDishFlow({
     <View style={styles.root}>
       <CameraCapture
         guide
-        useLabel={error ? 'Try again' : 'Use this photo'}
+        useLabel={error ? 'Try again' : 'Use'}
         onUse={upload}
         onCancel={onCancel}
         previewNote={error}

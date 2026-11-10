@@ -59,7 +59,7 @@ export function ProfileModal({
     !!profile && (!Number.isFinite(typedCm) || Math.abs(typedCm / 100 - profile.diameter) > 1e-6);
 
   const shapeStatus = profile?.shape
-    ? `Calibrated, about ${Math.round(profile.shape.depthFrac * profile.diameter * 500)} mm deep`
+    ? `Calibrated (${Math.round(profile.shape.depthFrac * profile.diameter * 500)} mm deep)`
     : 'Not calibrated yet';
 
   return (
@@ -145,13 +145,13 @@ export function ProfileModal({
                       accessibilityRole="button"
                     >
                       <Text style={styles.outlineText}>
-                        {profile.shape ? 'Calibrate again' : 'Calibrate with an empty-dish photo'}
+                        {profile.shape ? 'Calibrate again' : 'Calibrate'}
                       </Text>
                     </Pressable>
                     <Text style={styles.hint}>
                       {hasUnsavedDiameter
                         ? 'Save your change to the diameter first. Calibration uses the saved diameter.'
-                        : 'Take one photo of the empty dish from above. Meals in this dish are then measured against its real shape.'}
+                        : 'Take one photo of the empty dish from above.'}
                     </Text>
                   </View>
                 ) : null}
