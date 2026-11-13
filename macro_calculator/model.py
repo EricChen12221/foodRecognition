@@ -23,7 +23,7 @@ from food_segmenter import FoodSegmenter
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------- device
+# device
 if torch.cuda.is_available():
     device = torch.device("cuda")
 elif torch.backends.mps.is_available():
@@ -33,7 +33,7 @@ else:
 
 florence_dtype = torch.float16 if device.type == "cuda" else torch.float32
 
-# ---------------------------------------------------------------- models
+# models
 # Florence-2: object detection / open-vocabulary detection
 florence_proc = AutoProcessor.from_pretrained(
     "microsoft/Florence-2-large", trust_remote_code=True
@@ -60,7 +60,7 @@ predictor = SamPredictor(sam)
 # requests would corrupt each other. Serialize all GPU/model work.
 _model_lock = threading.Lock()
 
-# ---------------------------------------------------------------- config
+# config
 CONTAINER_WORDS = {
     "plate", "bowl", "cup", "mug", "glass", "dish", "tray", "platter",
     "container", "pan", "pot", "tableware", "dishware", "kitchenware",
