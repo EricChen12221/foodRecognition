@@ -1,355 +1,310 @@
-"""
-Backend for the app: receives the photo, runs your pipeline, returns JSON.
+import transformers.dynamic_module_utils
 
-Run (from macro_calculator, with moge_env active):
-    pip install fastapi uvicorn python-multipart
-    uvicorn server:app --host 0.0.0.0 --port 8000
-"""
-import io
+# Florence-2's remote code does an import check that demands flash_attn even
+# though we run with attn_implementation="eager". Skip that check.
+transformers.dynamic_module_utils.check_imports = lambda *args, **kwargs: []
+
+import logging
 import os
 import threading
-import time
-import traceback
-import uuid
 
 import numpy as np
 import torch
-from PIL import Image, ImageOps
+from transformers import (
+    AutoModelForCausalLM,
+    AutoProcessor,
+    SegformerForSemanticSegmentation,
+    SegformerImageProcessor,
+)
+from segment_anything import sam_model_registry, SamPredictor
 
-from typing import List
+from rim_detection import RimDetector
+from pipeline import measure_meal
+from errors import Cancelled
+from dish_calibration import calibrate_dish, record_from_profile
+from depth_estimation import estimate_depth
+from classifier import filter_foods
 
-# Optional: lets Pillow open HEIC photos if pillow-heif is installed.
-try:
-    from pillow_heif import register_heif_opener
-    register_heif_opener()
-except ImportError:
-    pass
+log = logging.getLogger(__name__)
 
-SESSION_TTL_S = 15 * 60  # how long stage-1 results stay available for stage 2
+# ---------------------------------------------------------------- device
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
+florence_dtype = torch.float16 if device.type == "cuda" else torch.float32
 
-import base64
+# ---------------------------------------------------------------- models
+# Florence-2: object detection / open-vocabulary detection
+florence_proc = AutoProcessor.from_pretrained(
+    "microsoft/Florence-2-large", trust_remote_code=True
+)
+florence = AutoModelForCausalLM.from_pretrained(
+    "microsoft/Florence-2-large",
+    torch_dtype=florence_dtype,
+    trust_remote_code=True,
+    attn_implementation="eager",
+).to(device)
 
-class Cancelled(Exception):
-    """Raised inside the pipeline when the request should stop."""
+# SegFormer (private HF repo). NOTE: not used by any function below yet.
+# Delete this block if you don't plan to use it, it costs a lot of memory.
+SEG_REPO = "echen344/foodseg103-segformer-b5"
+HF_TOKEN = os.environ.get("HF_TOKEN")
+if not HF_TOKEN:
+    raise RuntimeError("HF_TOKEN is not set")
+seg_proc = SegformerImageProcessor.from_pretrained(SEG_REPO, token=HF_TOKEN)
+seg_model = (
+    SegformerForSemanticSegmentation.from_pretrained(SEG_REPO, token=HF_TOKEN)
+    .to(device)
+    .eval()
+)
 
-def crop_thumb(img, box, size=160, mask=None):
-    if len(box) != 4:
-        return None
-    x1, y1, x2, y2 = [int(v) for v in box]
-    x1, y1 = max(x1, 0), max(y1, 0)
-    x2, y2 = min(x2, img.width), min(y2, img.height)
-    if x2 - x1 < 2 or y2 - y1 < 2:
-        return None
-    crop = img.crop((x1, y1, x2, y2))
- 
-    if mask is not None:                                   # same size as the image: cut out the same area
-        inside = np.asarray(mask)[y1:y2, x1:x2] > 0
-        arr = np.array(crop)
-        arr[~inside] = 128                                 # neutral gray outside this food
-        crop = Image.fromarray(arr)
- 
-    crop.thumbnail((size, size))
-    buf = io.BytesIO()
-    crop.save(buf, format="JPEG", quality=80)
-    return base64.b64encode(buf.getvalue()).decode()
+# SAM
+sam = sam_model_registry["vit_b"](checkpoint="sam_vit_b_01ec64.pth")
+sam.to(device=device)
+predictor = SamPredictor(sam)
 
-def load_upload(data: bytes) -> Image.Image:
-    """Uploaded bytes -> upright, resized RGB PIL image.
-    Phones usually store rotation in EXIF instead of rotating the pixels, and PIL
-    ignores it unless told to, so without exif_transpose the image (and every mask
-    and depth value computed from it) can come out sideways.
-    Resizing once here keeps masks, depth and rims consistent downstream."""
-    try:
-        img = Image.open(io.BytesIO(data))
-        img = ImageOps.exif_transpose(img).convert("RGB")
-        img.thumbnail((1280, 1280))  # in-place, keeps aspect ratio
-        return img
-    except Exception as e:
-        raise ValueError("The upload is not a readable image.") from e
+# SamPredictor.set_image() stores state on the predictor, so concurrent
+# requests would corrupt each other. Serialize all GPU/model work.
+_model_lock = threading.Lock()
 
+# config
+CONTAINER_WORDS = {
+    "plate", "bowl", "cup", "mug", "glass", "dish", "tray", "platter",
+    "container", "pan", "pot", "tableware", "dishware", "kitchenware",
+}
 
-def _py(v):
-    """numpy scalars/arrays -> plain Python so json can handle them."""
-    if v is None:
-        return None
-    if isinstance(v, np.generic):
-        return v.item()
-    if isinstance(v, np.ndarray):
-        return v.tolist()
-    return v
+# A container box this close to the whole image is a detection miss, not a real
+# container. (Not lower: a big plate can legitimately fill most of a close-up.)
+MAX_CONTAINER_FRAC = 0.97
+MIN_RIM_ARC = 0.5  # rims with less edge support than this are rejected
 
-
-def to_jsonable(v):
-    """Recursively make a result JSON-safe. Large arrays (masks, depth maps) are dropped."""
-    if isinstance(v, np.generic):
-        return v.item()
-    if isinstance(v, np.ndarray):
-        return None if v.size > 1000 else v.tolist()
-    if isinstance(v, dict):
-        return {str(k): to_jsonable(x) for k, x in v.items()}
-    if isinstance(v, (list, tuple)):
-        return [to_jsonable(x) for x in v]
-    return v
+# Set DEBUG_RIM_DIR=/some/dir to save rim debug images (unique filename each).
+DEBUG_RIM_DIR = os.environ.get("DEBUG_RIM_DIR")
 
 
-def serialize_foods(foods, img):
-    """Keep only what the app needs; masks are far too large for JSON."""
-    out = []
-    for i, f in enumerate(foods):
-        out.append({
-            "id": i,
-            "label": f.get("label"),
-            "box": [float(x) for x in f.get("box", [])],
-            "score": _py(f.get("score")),
-            "thumbnail": crop_thumb(img, f.get("box", []), mask=f.get("mask", None))
+# helpers
+def is_container(label):
+    words = label.lower().replace("-", " ").split()
+    return bool(words) and words[-1] in CONTAINER_WORDS
+
+
+def box_area(b):
+    return (b[2] - b[0]) * (b[3] - b[1])
+
+
+def segment_box(box):
+    """SAM: one box in -> (mask, score) out. Caller must have called set_image."""
+    masks, scores, _ = predictor.predict(box=np.asarray(box), multimask_output=False)
+    return masks[0], scores[0]
+
+
+def run_florence(image, task, text="", max_new_tokens=256):
+    inputs = florence_proc(text=task + text, images=image, return_tensors="pt")
+    inputs = {
+        k: v.to(device, dtype=florence_dtype) if v.is_floating_point() else v.to(device)
+        for k, v in inputs.items()
+    }
+    with torch.inference_mode():
+        generated_ids = florence.generate(
+            input_ids=inputs["input_ids"],
+            pixel_values=inputs["pixel_values"],
+            max_new_tokens=max_new_tokens,
+            num_beams=3,
+            early_stopping=False,
+            do_sample=False,
+            use_cache=True,
+        )
+    generated_text = florence_proc.batch_decode(
+        generated_ids, skip_special_tokens=False
+    )[0]
+    return florence_proc.post_process_generation(
+        generated_text, task=task, image_size=image.size
+    )[task]
+
+
+def pick_container(image, od_boxes, od_labels):
+    """Container boxes from <OD> labels; if none, short open-vocabulary prompts.
+    Returns a list with the single largest plausible container (or [])."""
+    cands = [b for b, l in zip(od_boxes, od_labels) if is_container(l)]
+    if not cands:
+        for text in ("plate", "bowl"):  # one short noun per prompt
+            cands = run_florence(image, "<OPEN_VOCABULARY_DETECTION>", text, 128)["bboxes"]
+            if cands:
+                break
+    img_area = image.width * image.height
+    cands = [b for b in cands if box_area(b) < MAX_CONTAINER_FRAC * img_area]
+    return [{"box": max(cands, key=box_area)}] if cands else []
+
+
+def _make_check(should_stop):
+    def check():
+        if should_stop():
+            raise Cancelled()
+    return check
+
+
+# calibration
+def calibrateDish(image, diameter_m, measured_depth_mm=None, should_stop=lambda: False):
+    """Photo of an EMPTY dish -> (record, warnings).
+    Raises ValueError with a message for the user."""
+    check = _make_check(should_stop)
+    image = image.convert("RGB")
+
+    with _model_lock:
+        check()
+        od = run_florence(image, "<OD>")
+        check()
+
+        containers = pick_container(image, od["bboxes"], od["labels"])
+        if not containers:
+            raise ValueError(
+                "Could not find the dish. Photograph it from above, filling most of the frame."
+            )
+        box = containers[0]["box"]
+
+        predictor.set_image(np.array(image))
+        mask, _ = segment_box(box)
+
+        check()
+        r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
+        depth_map, focal = r["depth"], r["focal_px"]
+
+    rim = RimDetector().detect(
+        image=image, container_box=box, container_mask=mask, depth=depth_map
+    )
+    if rim is None or rim["arc_coverage"] < MIN_RIM_ARC:
+        raise ValueError("The rim was not clearly visible. Use a plain surface and good light.")
+
+    check()
+    return calibrate_dish(
+        depth_map, rim["ellipse_params"], mask, diameter_m * 1000.0, focal,
+        measured_depth_mm=measured_depth_mm,
+    )
+
+
+# stage 1
+def getFoodsAndContainers(image, should_stop=lambda: False):
+    check = _make_check(should_stop)
+    image = image.convert("RGB")
+
+    with _model_lock:
+        # 1. ONE <OD> pass: objects with labels
+        check()
+        od = run_florence(image, "<OD>")
+        boxes, labels = od["bboxes"], od["labels"]
+        log.info("OD labels: %s", labels)
+
+        # Foods: CLIP-based filter removes non-food objects (and containers).
+        food_boxes, food_labels = filter_foods(list(boxes), list(labels))
+        log.info("Detected %d food items: %s", len(food_boxes), food_labels)
+
+        # 2. Container: from <OD> if found, else short open-vocabulary prompt
+        check()
+        containers = pick_container(image, boxes, labels)
+        log.info("Container boxes: %s", containers)
+
+        # 3. SAM
+        log.info("Using device: %s", device)
+        predictor.set_image(np.array(image))
+
+        # Container masks (for ellipse fitting / volume baseline)
+        container_masks = []
+        for container in containers:
+            check()
+            mask, score = segment_box(container["box"])
+            container_masks.append(
+                {"box": container["box"], "mask": mask, "score": score}
+            )
+
+        # Food masks (for per-item volume / macro workflows)
+        food_masks = []
+        for i, box in enumerate(food_boxes):
+            check()
+            mask, score = segment_box(box)
+            food_masks.append(
+                {"id": i, "box": box, "mask": mask, "score": score, "label": food_labels[i]}
+            )
+
+    log.info(
+        "Extracted %d container mask(s) + %d food mask(s)",
+        len(container_masks), len(food_masks),
+    )
+    return food_masks, container_masks
+
+
+# stage 2
+def estimateVolume(food_masks, container_masks, image, should_stop=lambda: False):
+    """container_masks may carry a "radial_profile" (set by server.py from the client)."""
+    check = _make_check(should_stop)
+    image = image.convert("RGB")
+
+    check()
+    with _model_lock:
+        r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
+    depth_map, focal_length = r["depth"], r["focal_px"]
+    log.info(
+        "depth %s min=%s max=%s focal=%s",
+        depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length,
+    )
+
+    # RIMS
+    rim_detector = RimDetector()
+    containers_in = []
+    for i, container in enumerate(container_masks):
+        rim = rim_detector.detect(
+            image=image,
+            container_box=container["box"],
+            container_mask=container["mask"],
+            depth=depth_map,
+        )
+        if rim is None:
+            log.info("Container %d: no rim found, skipping", i)
+            continue
+        log.info(
+            "Container %d: valid=%s conf=%.2f arc=%.2f",
+            i, rim["valid"], rim["confidence"], rim["arc_coverage"],
+        )
+
+        if DEBUG_RIM_DIR:
+            os.makedirs(DEBUG_RIM_DIR, exist_ok=True)
+            path = os.path.join(DEBUG_RIM_DIR, f"rim_debug_{os.getpid()}_{id(image)}_{i}.jpg")
+            rim_detector.draw_result(image, rim).save(path)
+
+        if rim["arc_coverage"] < MIN_RIM_ARC:
+            log.info("Container %d: rim not reliable (arc=%.2f), skipping", i, rim["arc_coverage"])
+            continue
+
+        profile = container.get("radial_profile") or {}
+        shape_record = record_from_profile(profile)
+        log.info(
+            "Container %d: dish shape %s", i,
+            "from calibration" if shape_record else "not calibrated (fitted)",
+        )
+
+        containers_in.append({
+            "key": f"container_{i}",
+            "rim": rim,
+            "mask": container["mask"],
+            "container_class": "bowl" if "bowl" in str(profile.get("label", "")).lower() else "dinner_plate",
+            "known_diameter_m": profile.get("diameter"),
+            "shape_record": shape_record,
         })
-    return out
 
+    if not containers_in:
+        raise ValueError("No plate or bowl with a usable rim was found in the photo.")
 
-def serialize_containers(containers, img):
-    return [
-        {
-            "id": f"container_{i}",
-            "box": [float(x) for x in c.get("box", [])],
-            "score": _py(c.get("score")),
-            "thumbnail": crop_thumb(img, c.get("box", []))
-        }
-        for i, c in enumerate(containers)
-    ]
+    # the largest ellipse sets the scale
+    containers_in.sort(key=lambda c: -c["rim"]["major_axis"])
 
+    # SCALE, RECONSTRUCT, ASSIGN, VOLUMES
+    result = measure_meal(depth_map, focal_length, containers_in, food_masks)
 
-def create_app():
-    import asyncio
-    from fastapi import Body, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, Form
-    from typing import Any, Dict, Optional
-
-    from dish_calibration import shape_payload
-    from model import calibrateDish, getFoodsAndContainers, estimateVolume  # imported here so the models load once, at startup
-
-    app = FastAPI()
-    analysis_lock = asyncio.Lock()         
-    sessions = {}
-    cancel_flags: Dict[str, threading.Event] = {}
-
-    MAX_SESSIONS = 20
-    MAX_WAITING = 4                      # people queued behind the one running
-    counter = {"n": 0}
-    latest_analyze: Dict[str, int] = {}  # user id -> that user's newest /analyze number
-    waiting = {"n": 0}
-
-    def purge_old_sessions():
-        now = time.time()
-        for k in [k for k, v in list(sessions.items()) if now - v["created"] > SESSION_TTL_S]:
-            sessions.pop(k, None)
-        while len(sessions) > MAX_SESSIONS:                      # memory cap: each session holds a photo and masks
-            oldest = min(sessions, key=lambda k: sessions[k]["created"])
-            sessions.pop(oldest, None)
-
-    def warm_up():
-        path = os.path.join(os.path.dirname(__file__), "yumgrub.jpg")
-        t = time.perf_counter()
-        with open(path, "rb") as f:
-            img = load_upload(f.read())  # same path real uploads take
-        with torch.inference_mode():
-            foods, containers = getFoodsAndContainers(img)
-            estimateVolume(foods, containers, img)
-        print(f"Warm-up finished in {time.perf_counter() - t:.1f}s")
-
-    def flag_for(request_id: str) -> threading.Event:
-        if len(cancel_flags) > 500:          # a cancel for an id that never arrives must not pile up forever
-            cancel_flags.clear()
-        return cancel_flags.setdefault(request_id, threading.Event())
-    
-    try:
-        warm_up()
-    except Exception as e:
-        traceback.print_exc()
-        print(f"Warm-up failed (server will still start): {e}")
-
-    @app.get("/health")
-    def health():
-        return {"ok": True}
-
-    @app.post("/cancel/{request_id}")
-    def cancel(request_id: str):
-        flag_for(request_id).set() 
-        return {"ok": True}
-
-    async def run_cancellable(request: Request, request_id: str, work, superseded=lambda: False):
-        """Run work(should_stop) in a thread, one at a time. Raises Cancelled if it should not run or must stop."""
-        flag = flag_for(request_id)
-        if waiting["n"] >= MAX_WAITING:
-            raise HTTPException(status_code=429, detail="The server is busy. Try again in a moment.")
-        counted = True
-        waiting["n"] += 1
-        try:
-            async with analysis_lock:
-                waiting["n"] -= 1
-                counted = False
-                if flag.is_set() or superseded() or await request.is_disconnected():
-                    raise Cancelled()        # cancelled, replaced or abandoned while waiting in line: never start
-
-                def should_stop():
-                    return flag.is_set() or superseded()
-
-                async def watch():           # backup: a dropped connection counts as a cancel
-                    while not flag.is_set():
-                        if await request.is_disconnected():
-                            flag.set()
-                            return
-                        await asyncio.sleep(0.5)
-
-                watcher = asyncio.create_task(watch())
-                try:
-                    return await asyncio.to_thread(work, should_stop)
-                finally:
-                    watcher.cancel()
-        finally:
-            if counted:
-                waiting["n"] -= 1                                # left the line without ever getting the lock
-            cancel_flags.pop(request_id, None)
-
-    @app.post("/calibrate")
-    async def calibrate_endpoint(
-        request: Request,
-        image: UploadFile = File(...),
-        diameter_m: float = Form(...),
-        measured_depth_mm: Optional[float] = Form(None),
-        x_request_id: Optional[str] = Header(None),
-    ):
-        if not (0.05 <= diameter_m <= 0.8):
-            raise HTTPException(status_code=400, detail="diameter_m must be between 0.05 and 0.8.")
-        try:
-            img = load_upload(await image.read())
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-        def work(should_stop):
-            with torch.inference_mode():
-                return calibrateDish(img, diameter_m, measured_depth_mm, should_stop)
-
-        try:
-            record, warnings = await run_cancellable(request, x_request_id or uuid.uuid4().hex, work)
-        except Cancelled:
-            return Response(status_code=499)
-        except ValueError as e:                       # messages written for the user
-            raise HTTPException(status_code=422, detail=str(e))
-
-        return to_jsonable({"shape": shape_payload(record), "warnings": warnings})
-
-    @app.post("/analyze")
-    async def analyze(
-        request: Request,
-        image: UploadFile = File(...),
-        x_request_id: Optional[str] = Header(None),
-        x_user_id: Optional[str] = Header(None),
-    ):
-        user = x_user_id or "anonymous"
-        request_id = x_request_id or uuid.uuid4().hex
-        counter["n"] += 1
-        mine = counter["n"]
-        latest_analyze[user] = mine                                   # per user, not global
-        superseded = lambda: latest_analyze.get(user) != mine
-
-        raw = await image.read()
-        try:
-            img = load_upload(raw)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-        def work(should_stop):
-            with torch.inference_mode():
-                return getFoodsAndContainers(img, should_stop)
-
-        try:
-            foods, containers = await run_cancellable(request, request_id, work, superseded)
-        except Cancelled:
-            if superseded():
-                # the client may still be waiting, so give it a real answer
-                raise HTTPException(status_code=409, detail="Replaced by a newer photo.")
-            print("analyze cancelled: client left")
-            return Response(status_code=499)             # nobody is listening, so this is only for the log
-
-        for k in [k for k, v in sessions.items() if v.get("owner") == user]:
-            sessions.pop(k, None)                                     # one session per user: old photo is replaced
-        purge_old_sessions()
-        session_id = uuid.uuid4().hex
-        sessions[session_id] = {
-            "created": time.time(),
-            "owner": user,
-            "image": img,
-            "foods": foods,
-            "containers": containers,
-        }
-
-        return {
-            "session_id": session_id,
-            "foods": serialize_foods(foods, img),
-            "containers": serialize_containers(containers, img),
-        }
-
-    @app.post("/estimate")
-    async def estimate(
-        request: Request,
-        session_id: str = Body(...),
-        containers: List[Dict[str, Any]] = Body(default=[]),
-        foods: Optional[List[Dict[str, Any]]] = Body(default=None),
-        x_request_id: Optional[str] = Header(None),
-        x_user_id: Optional[str] = Header(None)
-    ):
-        s = sessions.get(session_id)
-        if s is None or s.get("owner") != (x_user_id or "anonymous"):
-            raise HTTPException(status_code=404, detail="Session expired or unknown. Re-upload the photo.")
-
-        if foods is None:
-            chosen = s["foods"]
-        else:
-            stored = {i: f for i, f in enumerate(s["foods"])}   # the ids /analyze sent out
-            chosen, seen = [], set()
-            for item in foods:
-                fid = item.get("id")
-                new_label = item.get("newLabel")
-                if fid not in stored:
-                    raise HTTPException(status_code=400, detail=f"Unknown food id: {fid}")
-                if fid in seen:
-                    continue
-                seen.add(fid)
-
-                original = stored[fid].get("label")
-                if new_label is None:
-                    label = original
-                elif isinstance(new_label, str) and new_label.strip() and len(new_label) <= 40:
-                    label = new_label.strip().lower()
-                else:
-                    raise HTTPException(status_code=400, detail=f"newLabel for {fid} must be 1 to 40 characters.")
-                chosen.append(dict(stored[fid], label=label, original_label=original))
-
-        if not chosen:
-            raise HTTPException(status_code=400, detail="Pick at least one food to measure.")
-
-        profile_by_id = {c.get("id"): c.get("radial_profile") for c in containers}
-        container_masks = [
-            dict(c, radial_profile=profile_by_id.get(f"container_{i}"))
-            for i, c in enumerate(s["containers"])
-        ]
-
-        def work(should_stop):
-            with torch.inference_mode():
-                return estimateVolume(chosen, container_masks, s["image"], should_stop)
-
-        try:
-            volumes = await run_cancellable(request, x_request_id or uuid.uuid4().hex, work)
-        except Cancelled:
-            print("estimate cancelled: client left")
-            return Response(status_code=499)
-        except Exception as e:
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Volume estimation failed: {e}")
-
-        return {"volumes": to_jsonable(volumes)}
-
-    return app
-
-
-app = create_app()
+    log.info("scale: %s", result["scale_info"])
+    log.info("unassigned foods: %d %s", len(result["unassigned"]),
+             [f["label"] for f in result["unassigned"]])
+    log.info("dropped foods: %s", result["dropped"])
+    return result["foods"]

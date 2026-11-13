@@ -1,69 +1,123 @@
 import transformers.dynamic_module_utils
 
+# Florence-2's remote code does an import check that demands flash_attn even
+# though we run with attn_implementation="eager". Skip that check.
 transformers.dynamic_module_utils.check_imports = lambda *args, **kwargs: []
+
+import logging
+import os
+import threading
+
+import numpy as np
+import torch
+from transformers import AutoModelForCausalLM, AutoProcessor
+from segment_anything import sam_model_registry, SamPredictor
 
 from rim_detection import RimDetector
 from pipeline import measure_meal
-from server import Cancelled
-
+from errors import Cancelled
 from dish_calibration import calibrate_dish, record_from_profile
-
-import torch
-import numpy as np
-from transformers import AutoProcessor, AutoModelForCausalLM
-from segment_anything import sam_model_registry, SamPredictor
 from depth_estimation import estimate_depth
 from classifier import filter_foods
+from food_segmenter import FoodSegmenter
 
-#FIND FOOD AND SEGMENTATION
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+log = logging.getLogger(__name__)
 
-processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", torch_dtype=torch_dtype, trust_remote_code=True, attn_implementation="eager").to(device)
+# ---------------------------------------------------------------- device
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
 
-model_type = "vit_b"
-checkpoint_path = "sam_vit_b_01ec64.pth"
+florence_dtype = torch.float16 if device.type == "cuda" else torch.float32
 
-sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
+# ---------------------------------------------------------------- models
+# Florence-2: object detection / open-vocabulary detection
+florence_proc = AutoProcessor.from_pretrained(
+    "microsoft/Florence-2-large", trust_remote_code=True
+)
+florence = AutoModelForCausalLM.from_pretrained(
+    "microsoft/Florence-2-large",
+    torch_dtype=florence_dtype,
+    trust_remote_code=True,
+    attn_implementation="eager",
+).to(device)
+
+# SegFormer (private HF repo): finds and names food regions
+HF_TOKEN = os.environ.get("HF_TOKEN")
+if not HF_TOKEN:
+    raise RuntimeError("HF_TOKEN is not set")
+segmenter = FoodSegmenter("echen344/foodseg103-segformer-b5", token=HF_TOKEN, device=device)
+
+# SAM
+sam = sam_model_registry["vit_b"](checkpoint="sam_vit_b_01ec64.pth")
 sam.to(device=device)
-
 predictor = SamPredictor(sam)
 
-CONTAINER_WORDS = {"plate", "bowl", "cup", "mug", "glass", "dish", "tray", "platter",
-                   "container", "pan", "pot", "tableware", "dishware", "kitchenware" }
+# SamPredictor.set_image() stores state on the predictor, so concurrent
+# requests would corrupt each other. Serialize all GPU/model work.
+_model_lock = threading.Lock()
 
-# A container box this close to the whole image is a detection miss, not a real container.
-# (Not lower: a big plate can legitimately fill most of a close-up photo.)
+# ---------------------------------------------------------------- config
+CONTAINER_WORDS = {
+    "plate", "bowl", "cup", "mug", "glass", "dish", "tray", "platter",
+    "container", "pan", "pot", "tableware", "dishware", "kitchenware",
+}
+
+# A container box this close to the whole image is a detection miss, not a real
+# container. (Not lower: a big plate can legitimately fill most of a close-up.)
 MAX_CONTAINER_FRAC = 0.97
-MIN_RIM_ARC = 0.5   # rims with less edge support than this are rejected
+MIN_RIM_ARC = 0.5  # rims with less edge support than this are rejected
+
+DUPLICATE_OVERLAP = 0.6     # drop a proposal whose mask overlaps an existing one this much
+
+# Set DEBUG_RIM_DIR=/some/dir to save rim debug images (unique filename each).
+DEBUG_RIM_DIR = os.environ.get("DEBUG_RIM_DIR")
 
 
+# helpers
 def is_container(label):
     words = label.lower().replace("-", " ").split()
     return bool(words) and words[-1] in CONTAINER_WORDS
+
 
 def box_area(b):
     return (b[2] - b[0]) * (b[3] - b[1])
 
 
+def segment_box(box, point=None):
+    """SAM: box (and optionally one positive point) in -> (mask, score) out.
+    Caller must have called set_image."""
+    kwargs = {}
+    if point is not None:
+        kwargs["point_coords"] = np.asarray([point], dtype=np.float32)
+        kwargs["point_labels"] = np.asarray([1])
+    masks, scores, _ = predictor.predict(box=np.asarray(box), multimask_output=False, **kwargs)
+    return masks[0], scores[0]
+
+
 def run_florence(image, task, text="", max_new_tokens=256):
-    inputs = processor(text=task + text, images=image, return_tensors="pt")
+    inputs = florence_proc(text=task + text, images=image, return_tensors="pt")
     inputs = {
-        k: v.to(device, dtype=torch_dtype) if v.is_floating_point() else v.to(device)
+        k: v.to(device, dtype=florence_dtype) if v.is_floating_point() else v.to(device)
         for k, v in inputs.items()
     }
-    generated_ids = model.generate(
-        input_ids=inputs["input_ids"],
-        pixel_values=inputs["pixel_values"],
-        max_new_tokens=max_new_tokens,
-        num_beams=3,
-        early_stopping=False,
-        do_sample=False,
-        use_cache=True,
-    )
-    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-    return processor.post_process_generation(
+    with torch.inference_mode():
+        generated_ids = florence.generate(
+            input_ids=inputs["input_ids"],
+            pixel_values=inputs["pixel_values"],
+            max_new_tokens=max_new_tokens,
+            num_beams=3,
+            early_stopping=False,
+            do_sample=False,
+            use_cache=True,
+        )
+    generated_text = florence_proc.batch_decode(
+        generated_ids, skip_special_tokens=False
+    )[0]
+    return florence_proc.post_process_generation(
         generated_text, task=task, image_size=image.size
     )[task]
 
@@ -73,7 +127,7 @@ def pick_container(image, od_boxes, od_labels):
     Returns a list with the single largest plausible container (or [])."""
     cands = [b for b, l in zip(od_boxes, od_labels) if is_container(l)]
     if not cands:
-        for text in ("plate", "bowl"):                      # one short noun per prompt
+        for text in ("plate", "bowl"):  # one short noun per prompt
             cands = run_florence(image, "<OPEN_VOCABULARY_DETECTION>", text, 128)["bboxes"]
             if cands:
                 break
@@ -81,32 +135,54 @@ def pick_container(image, od_boxes, od_labels):
     cands = [b for b in cands if box_area(b) < MAX_CONTAINER_FRAC * img_area]
     return [{"box": max(cands, key=box_area)}] if cands else []
 
-def calibrateDish(image, diameter_m, measured_depth_mm=None, should_stop=lambda: False):
-    """Photo of an EMPTY dish -> (record, warnings). Raises ValueError with a message for the user."""
+
+def _make_check(should_stop):
     def check():
         if should_stop():
             raise Cancelled()
-            
+    return check
+
+
+
+def overlaps_existing(mask, existing_masks):
+    """True if `mask` mostly lies inside (or contains) one of the existing masks."""
+    a = int(mask.sum())
+    for m in existing_masks:
+        inter = int(np.logical_and(mask, m).sum())
+        if inter / max(1, min(a, int(m.sum()))) > DUPLICATE_OVERLAP:
+            return True
+    return False
+
+
+# calibration
+def calibrateDish(image, diameter_m, measured_depth_mm=None, should_stop=lambda: False):
+    """Photo of an EMPTY dish -> (record, warnings).
+    Raises ValueError with a message for the user."""
+    check = _make_check(should_stop)
     image = image.convert("RGB")
 
-    check()
-    od = run_florence(image, "<OD>")
-    check()
+    with _model_lock:
+        check()
+        od = run_florence(image, "<OD>")
+        check()
 
-    containers = pick_container(image, od["bboxes"], od["labels"])
-    if not containers:
-        raise ValueError("Could not find the dish. Photograph it from above, filling most of the frame.")
-    box = containers[0]["box"]
+        containers = pick_container(image, od["bboxes"], od["labels"])
+        if not containers:
+            raise ValueError(
+                "Could not find the dish. Photograph it from above, filling most of the frame."
+            )
+        box = containers[0]["box"]
 
-    predictor.set_image(np.array(image))
-    masks, _, _ = predictor.predict(box=np.array(box), multimask_output=False)
-    mask = masks[0]
+        predictor.set_image(np.array(image))
+        mask, _ = segment_box(box)
 
-    check()
-    r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
-    depth_map, focal = r["depth"], r["focal_px"]
+        check()
+        r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
+        depth_map, focal = r["depth"], r["focal_px"]
 
-    rim = RimDetector().detect(image=image, container_box=box, container_mask=mask, depth=depth_map)
+    rim = RimDetector().detect(
+        image=image, container_box=box, container_mask=mask, depth=depth_map
+    )
     if rim is None or rim["arc_coverage"] < MIN_RIM_ARC:
         raise ValueError("The rim was not clearly visible. Use a plain surface and good light.")
 
@@ -116,134 +192,156 @@ def calibrateDish(image, diameter_m, measured_depth_mm=None, should_stop=lambda:
         measured_depth_mm=measured_depth_mm,
     )
 
+
+# stage 1
 def getFoodsAndContainers(image, should_stop=lambda: False):
-    def check():
-        if should_stop():
-            raise Cancelled()
-        
+    check = _make_check(should_stop)
     image = image.convert("RGB")
 
-    # 1. ONE <OD> pass: objects with labels
-    check()
-    od = run_florence(image, "<OD>")
-    parsed_objects = od['bboxes']
-    parsed_objects_labels = od['labels']
-    print("OD labels:", parsed_objects_labels)
+    with _model_lock:
+        # 1. ONE <OD> pass: objects with labels
+        check()
+        od = run_florence(image, "<OD>")
+        boxes, labels = od["bboxes"], od["labels"]
+        log.info("OD labels: %s", labels)
 
-    # Foods: everything that is NOT a container by label, then CLIP removes non-food objects.
-    pairs = [(b, l) for b, l in zip(parsed_objects, parsed_objects_labels)]
-    parsed_food, parsed_food_labels = filter_foods(
-        [b for b, _ in pairs], [l for _, l in pairs]
+        # Foods: CLIP-based filter removes non-food objects (and containers).
+        food_boxes, food_labels = filter_foods(list(boxes), list(labels))
+        log.info("Detected %d food items: %s", len(food_boxes), food_labels)
+
+        # 2. Container: from <OD> if found, else short open-vocabulary prompt
+        check()
+        containers = pick_container(image, boxes, labels)
+        log.info("Container boxes: %s", containers)
+
+        # 3. SAM
+        log.info("Using device: %s", device)
+        predictor.set_image(np.array(image))
+
+        # Container masks (for ellipse fitting / volume baseline)
+        container_masks = []
+        for container in containers:
+            check()
+            mask, score = segment_box(container["box"])
+            container_masks.append(
+                {"box": container["box"], "mask": mask, "score": score}
+            )
+
+        # Food masks. Two sources of regions, both outlined by SAM and named by SegFormer:
+        #   (a) Florence's food boxes (after the CLIP filter)
+        #   (b) SegFormer's own food regions, because Florence often misses food
+        check()
+        probs = segmenter.probs(image)
+
+        candidates = [
+            {"box": b, "point": None, "florence_label": l, "source": "florence"}
+            for b, l in zip(food_boxes, food_labels)
+        ]
+        for p in segmenter.propose(probs, image.width, image.height):
+            candidates.append({
+                "box": p["box"], "point": p["point"],
+                "florence_label": None, "source": "segformer",
+                "seg_hint": p["class_name"],
+            })
+
+        food_masks = []
+        for cand in candidates:
+            check()
+            mask, score = segment_box(cand["box"], cand["point"])
+            if cand["source"] == "segformer" and overlaps_existing(
+                mask, [f["mask"] for f in food_masks]
+            ):
+                continue                       # already found (e.g. by Florence)
+            seg_label, seg_conf = segmenter.label_mask(probs, mask)
+            label = seg_label or cand["florence_label"] or cand.get("seg_hint")
+            if not label:
+                continue
+            log.info("food from %s: florence=%r segformer=%r (%.2f)",
+                     cand["source"], cand["florence_label"], seg_label, seg_conf)
+            food_masks.append({
+                "id": len(food_masks), "box": cand["box"], "mask": mask, "score": score,
+                "label": label,
+                "florence_label": cand["florence_label"],
+                "seg_confidence": seg_conf,
+                "source": cand["source"],
+            })
+
+    log.info(
+        "Extracted %d container mask(s) + %d food mask(s)",
+        len(container_masks), len(food_masks),
     )
-    print(f"Detected {len(parsed_food)} food items:", parsed_food_labels)
-
-    # 2. Container: from <OD> if it found one, else a short open-vocabulary prompt
-    check()
-    containers = pick_container(image, parsed_objects, parsed_objects_labels)
-    print("Container boxes:", containers)
-
-    # 3. SAM
-    print(f"Using device: {device}")
-
-    image_rgb = np.array(image)
-    predictor.set_image(image_rgb)
-
-    # Get precise mask for the container (for ellipse fitting / volume baseline)
-    container_masks = []
-
-    for container in containers:
-        check()
-
-        box = np.array(container["box"])
-
-        masks, scores, _ = predictor.predict(
-            box=box,
-            multimask_output=False
-        )
-
-        container_masks.append({
-            "box": container["box"],
-            "mask": masks[0],
-            "score": scores[0]
-        })
-
-    # Get precise masks for every food item (for individual macro crop-and-caption workflows)
-    food_masks = []
-    for i, box in enumerate(parsed_food):
-        check()
-
-        masks, scores, _ = predictor.predict(box=np.array(box), multimask_output=False)
-        food_masks.append({
-            'id': i,
-            'box': box,
-            'mask': masks[0],
-            'score': scores[0],
-            'label': parsed_food_labels[i]
-        })
-
-    print(f"Success! {len(container_masks)} container mask(s) + {len(food_masks)} food pixel masks extracted.")
-
     return food_masks, container_masks
 
 
-#  stage 2
+# stage 2
 def estimateVolume(food_masks, container_masks, image, should_stop=lambda: False):
-    def check():
-        if should_stop():
-            raise Cancelled()
-        
+    """container_masks may carry a "radial_profile" (set by server.py from the client)."""
+    check = _make_check(should_stop)
     image = image.convert("RGB")
-    
-    check()
-    r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
-    depth_map, focal_length = r["depth"], r["focal_px"]
-    print(depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length)
 
-    #RIMS
+    check()
+    with _model_lock:
+        r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
+    depth_map, focal_length = r["depth"], r["focal_px"]
+    log.info(
+        "depth %s min=%s max=%s focal=%s",
+        depth_map.shape, np.nanmin(depth_map), np.nanmax(depth_map), focal_length,
+    )
+
+    # RIMS
     rim_detector = RimDetector()
     containers_in = []
     for i, container in enumerate(container_masks):
-        rim = rim_detector.detect(image=image,
-                                container_box=container["box"],
-                                container_mask=container["mask"],
-                                depth=depth_map)
+        rim = rim_detector.detect(
+            image=image,
+            container_box=container["box"],
+            container_mask=container["mask"],
+            depth=depth_map,
+        )
         if rim is None:
-            print(f"Container {i}: no rim found, skipping")
+            log.info("Container %d: no rim found, skipping", i)
             continue
-        print(f"Container {i}: valid={rim['valid']} conf={rim['confidence']:.2f} "
-            f"arc={rim['arc_coverage']:.2f}")
-        rim_detector.draw_result(image, rim).save(f"rim_debug_{i}.jpg")
+        log.info(
+            "Container %d: valid=%s conf=%.2f arc=%.2f",
+            i, rim["valid"], rim["confidence"], rim["arc_coverage"],
+        )
+
+        if DEBUG_RIM_DIR:
+            os.makedirs(DEBUG_RIM_DIR, exist_ok=True)
+            path = os.path.join(DEBUG_RIM_DIR, f"rim_debug_{os.getpid()}_{id(image)}_{i}.jpg")
+            rim_detector.draw_result(image, rim).save(path)
 
         if rim["arc_coverage"] < MIN_RIM_ARC:
-            print(f"Container {i}: rim not reliable (arc={rim['arc_coverage']:.2f}), skipping")
+            log.info("Container %d: rim not reliable (arc=%.2f), skipping", i, rim["arc_coverage"])
             continue
 
         profile = container.get("radial_profile") or {}
         shape_record = record_from_profile(profile)
-        print(f"Container {i}: dish shape {'from calibration' if shape_record else 'not calibrated (fitted)'}")
+        log.info(
+            "Container %d: dish shape %s", i,
+            "from calibration" if shape_record else "not calibrated (fitted)",
+        )
 
-        profile = container.get("radial_profile") or {}
         containers_in.append({
             "key": f"container_{i}",
             "rim": rim,
             "mask": container["mask"],
             "container_class": "bowl" if "bowl" in str(profile.get("label", "")).lower() else "dinner_plate",
             "known_diameter_m": profile.get("diameter"),
-            "shape_record": shape_record, 
+            "shape_record": shape_record,
         })
 
-    # NEW: fail with a readable message instead of an index error downstream
     if not containers_in:
         raise ValueError("No plate or bowl with a usable rim was found in the photo.")
 
     # the largest ellipse sets the scale
     containers_in.sort(key=lambda c: -c["rim"]["major_axis"])
 
-    #SCALE, RECONSTRUCT, ASSIGN, VOLUMES
+    # SCALE, RECONSTRUCT, ASSIGN, VOLUMES
     result = measure_meal(depth_map, focal_length, containers_in, food_masks)
 
-    print("scale:", result["scale_info"])
-    print("unassigned foods:", len(result["unassigned"]))
-    print([f["label"] for f in result["unassigned"]])
-    print("dropped foods:", result["dropped"])
+    log.info("scale: %s", result["scale_info"])
+    log.info("unassigned foods: %d %s", len(result["unassigned"]),
+             [f["label"] for f in result["unassigned"]])
+    log.info("dropped foods: %s", result["dropped"])
     return result["foods"]
