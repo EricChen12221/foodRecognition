@@ -97,3 +97,15 @@ class FoodSegmenter:
             return None, 0.0
         conf, idx = mean.max(dim=0)
         return self.id2label[int(idx)], float(conf) / total
+
+    def food_fraction(self, probs, mask):
+         """Share of a SAM mask that SegFormer thinks is food (1 minus the background probability)."""
+         if not self.background_ids:
+             return 1.0                                       # this model has no background class
+         _, h, w = probs.shape
+         m = torch.from_numpy(np.asarray(mask, dtype=np.float32))[None, None].to(probs.device)
+         m = F.interpolate(m, size=(h, w), mode="area")[0, 0]
+         if float(m.sum()) < 1e-6:
+             return 0.0
+         bg = sum(probs[i] for i in self.background_ids)      # (h, w)
+         return float(((1.0 - bg) * m).sum() / m.sum())
