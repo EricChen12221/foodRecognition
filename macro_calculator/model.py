@@ -3,23 +3,20 @@ import logging
 import os
 import threading
 
+import cv2
 import numpy as np
 import torch
 import transformers.dynamic_module_utils as dmu
 from segment_anything import SamPredictor, sam_model_registry
 from transformers import AutoModelForCausalLM, AutoProcessor
 
+from errors import Cancelled
+from food_estimation.food_debug import save_food_debug
 from models.depth_estimation import estimate_depth
 from models.food_segmenter import FoodSegmenter
-
+from pipeline import dedupe_foods, measure_meal
 from profile_estimations.dish_calibration import calibrate_dish, record_from_profile
 from profile_estimations.rim_detection import RimDetector
-
-from errors import Cancelled
-
-from pipeline import measure_meal
-
-from food_estimation.food_debug import save_food_debug
 
 
 log = logging.getLogger(__name__)
@@ -32,12 +29,16 @@ MAX_CONTAINER_FRAC = 0.97   # a box this close to the whole image is a detection
 MIN_RIM_ARC = 0.5           # rims with less edge support are rejected
 SEG_LABEL_MIN_CONF = 0.5    # use SegFormer's name only if it is this sure
 FOOD_FRACTION_MIN = 0.4     # drop a Florence box that is less than this much food
-INSIDE_MIN = 0.6            # SegFormer-only region must lie this much inside the container
-ALREADY_FOUND = 0.5         # SegFormer region this covered by Florence foods is a duplicate
+INSIDE_MIN = 0.6            # SegFormer-only region must lie this much inside the plate
+ALREADY_FOUND = 0.5         # SegFormer region this covered by existing foods is a duplicate
 MIN_FOOD_PIXELS = 300
+
+RESIDUAL_MIN_FRAC = 0.004   # SegFormer leftovers smaller than this share of the photo are noise
+RESIDUAL_MIN_CONF = 0.4     # mean SegFormer confidence a leftover region needs
 
 # Set DEBUG_RIM_DIR=/some/dir to save rim debug images (unique filename each).
 DEBUG_RIM_DIR = os.environ.get("DEBUG_RIM_DIR")
+# Set DEBUG_FOOD_DIR=/some/dir to save Florence / SegFormer / final-food debug images.
 DEBUG_FOOD_DIR = os.environ.get("DEBUG_FOOD_DIR")
 
 # SegFormer class names -> names in foods.csv. Anything not listed is used as-is.
@@ -65,6 +66,17 @@ def _covered(mask, others):
     if not others:
         return 0.0
     return float((mask & np.any(others, axis=0)).sum()) / max(1, int(mask.sum()))
+
+def _filled(mask):
+    """Solid outline of a container mask (convex hull).
+    SAM's plate mask often has holes where the food sits, so an "is it on the plate?"
+    test must use the filled shape, not the raw mask."""
+    cnts, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return mask
+    out = np.zeros(mask.shape, np.uint8)
+    cv2.fillConvexPoly(out, cv2.convexHull(np.vstack(cnts)), 1)
+    return out.astype(bool)
 
 class MealAnalyzer:
     def __init__(self, segformer_repo=None, hf_token=None, sam_checkpoint="sam_vit_b_01ec64.pth"):
@@ -146,7 +158,7 @@ class MealAnalyzer:
         boxes = [b for b in boxes if _area(b) < limit]
         return max(boxes, key=_area) if boxes else None
 
-    # public API 
+    # public API
     def calibrate_dish(self, image, diameter_m, measured_depth_mm=None, should_stop=_never):
         """Photo of an EMPTY dish -> (record, warnings). Raises ValueError for the user."""
         check = _checker(should_stop)
@@ -190,7 +202,8 @@ class MealAnalyzer:
             if box is not None:
                 mask, score = self._sam(box=box)
                 containers.append({"box": box, "mask": mask, "score": score})
-            container_union = np.any([c["mask"] for c in containers], axis=0) if containers else None
+            # Solid plate outline for "is it on the plate?" tests (the raw mask has food holes).
+            plate = _filled(np.any([c["mask"] for c in containers], axis=0)) if containers else None
 
             foods = []
 
@@ -214,7 +227,13 @@ class MealAnalyzer:
                     "detector_label": label, "label_conf": conf, "source": "florence",
                 })
 
-            # 2. Food regions SegFormer sees that Florence missed.
+            # Remove merged boxes (one box around several eggs) and near-copies, with the same
+            # rules measure_meal applies later, so the list the user sees matches what is measured.
+            foods, dropped = dedupe_foods(foods)
+            if dropped:
+                log.info("dedupe dropped: %s", [f["label"] for f in dropped])
+
+            # 2. Food regions SegFormer sees that Florence missed (outlined by SAM).
             for p in self.segmenter.propose(probs, image.width, image.height):
                 check()
                 if p["class_name"].lower() in IGNORE_CLASSES:
@@ -223,7 +242,7 @@ class MealAnalyzer:
                 area = int(mask.sum())
                 if area < MIN_FOOD_PIXELS:
                     continue
-                if container_union is not None and (mask & container_union).sum() / area < INSIDE_MIN:
+                if plate is not None and (mask & plate).sum() / area < INSIDE_MIN:
                     continue                        # not on the plate: a counter, a hand
                 if _covered(mask, [f["mask"] for f in foods]) > ALREADY_FOUND:
                     continue
@@ -232,15 +251,60 @@ class MealAnalyzer:
                     "label": self._normalize(p["class_name"]),
                     "detector_label": None, "label_conf": None, "source": "segformer",
                 })
-                
+
+            # 3. Whatever SegFormer still calls food that no kept mask covers.
+            foods += self._residual_foods(image, probs, foods, plate, check)
+
         if DEBUG_FOOD_DIR:
             try:
                 save_food_debug(DEBUG_FOOD_DIR, image, od, probs, foods, containers, self)
             except Exception:
-                log.exception("food debug images failed")
+                log.exception("food debug images failed")   # never break the request
 
         log.info("foods: %s", [(f["label"], f["source"]) for f in foods])
         return foods, containers
+
+    def _residual_foods(self, image, probs, foods, plate, check):
+        """SegFormer food pixels that no kept mask covers -> one food per class.
+        These masks come straight from SegFormer, so their edges are coarser than SAM's."""
+        h, w = image.height, image.width
+        conf_t, cls_t = probs.max(dim=0)
+        cls = cv2.resize(cls_t.cpu().numpy().astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST)
+        conf = cv2.resize(conf_t.cpu().numpy().astype(np.float32), (w, h), interpolation=cv2.INTER_NEAREST)
+
+        taken = np.zeros((h, w), np.uint8)
+        for f in foods:
+            taken |= f["mask"].astype(np.uint8)
+        taken = cv2.dilate(taken, np.ones((7, 7), np.uint8)) > 0   # no slivers around kept masks
+
+        kernel = np.ones((5, 5), np.uint8)
+        out = []
+        for k in np.unique(cls):
+            name = str(self.segmenter.id2label[int(k)])
+            if int(k) in self.segmenter.background_ids or name.lower() in IGNORE_CLASSES:
+                continue
+            check()
+            region = (cls == k) & ~taken
+            if plate is not None:
+                region &= plate
+            region = cv2.morphologyEx(region.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+            n, lab, stats, _ = cv2.connectedComponentsWithStats(region, connectivity=8)
+            keep = [j for j in range(1, n) if stats[j, cv2.CC_STAT_AREA] >= RESIDUAL_MIN_FRAC * h * w]
+            if not keep:
+                continue
+            mask = np.isin(lab, keep)
+            mean_conf = float(conf[mask].mean())
+            if mean_conf < RESIDUAL_MIN_CONF:
+                continue
+            ys, xs = np.nonzero(mask)
+            out.append({
+                "box": [float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)],
+                "mask": mask, "score": mean_conf,
+                "label": self._normalize(name),
+                "detector_label": None, "label_conf": mean_conf, "source": "residual",
+            })
+        log.info("residual foods: %s", [f["label"] for f in out])
+        return out
 
     @staticmethod
     def _normalize(name):
