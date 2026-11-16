@@ -50,7 +50,7 @@ class RimDetector:
         self.verbose = verbose
         self.rng = np.random.default_rng(seed)
  
-    # ------------------------------------------------------------------ main
+    # main
     def detect(self, image, container_box, container_mask, depth=None, occluder_mask=None):
         """
         image: PIL.Image
@@ -115,7 +115,7 @@ class RimDetector:
             "container_box": container_box,
         }
  
-    # ------------------------------------------------------------------ crop
+    # crop
     def _crop_container(self, image, box, mask, depth, occluder):
         x1, y1, x2, y2 = map(int, box)
         h, w = image.shape[:2]
@@ -150,7 +150,7 @@ class RimDetector:
         m = cv2.moments(mask.astype(np.uint8), binaryImage=True)
         return (m["m10"] / m["m00"], m["m01"] / m["m00"])
  
-    # ------------------------------------------------------------- edge map
+    # edge map
     def _normalize(self, values, low_percentile=2, high_percentile=98):
         values = values.astype(np.float32)
         low = np.percentile(values, low_percentile)
@@ -179,7 +179,7 @@ class RimDetector:
             return self._normalize(0.55 * rgb_edges + 0.45 * depth_edges)
         return self._normalize(rgb_edges)
  
-    # ------------------------------------------------------------ ray casting
+    # ray casting
     def _rim_radii(self, mask, center, thetas, offset, image_size, occluder):
         """
         For every angle, the radius of the OUTERMOST mask pixel on that ray.
@@ -255,7 +255,7 @@ class RimDetector:
             return np.empty((0, 5), dtype=np.float32)
         return np.asarray(results, dtype=np.float32)
  
-    # ----------------------------------------------------------- ellipse RANSAC
+    # ellipse RANSAC
     def _fit_ellipse(self, points, mask=None):
         xy = points[:, :2].astype(np.float32)
         n_points = len(xy)
@@ -349,7 +349,7 @@ class RimDetector:
         theta = np.arctan2(yr / b, xr / a)
         return np.hypot(xr - a * np.cos(theta), yr - b * np.sin(theta))
  
-    # ---------------------------------------------------------------- scoring
+    # scoring
     def _ellipse_points(self, ellipse, n=720):
         (cx, cy), (width, height), angle = ellipse
         a, b = width / 2, height / 2
@@ -423,7 +423,7 @@ class RimDetector:
                 "edge_score": edge_score, "mask_score": mask_score,
                 "fit_error": fit_error, "arc_coverage": arc_coverage}
  
-    # ------------------------------------------------------------------ debug
+    # debug
     def draw_result(self, image, result):
         """Candidates in yellow, RANSAC inliers in magenta, ellipse in red."""
         img = np.asarray(image).copy()

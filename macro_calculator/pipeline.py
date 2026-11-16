@@ -10,11 +10,11 @@ Uses your repo's module names. Order of operations:
 """
 import numpy as np
 
-from container_estimation import reconstruct_dish
-from food_alignment import assign_foods, diagnose
-from calculate_volume import calculate_food_volume
-from calibration import calibrate, volume_range
-from dish_calibration import reconstruct_with_record
+from profile_estimations.container_estimation import reconstruct_dish
+from food_estimation.food_alignment import assign_foods, diagnose
+from food_estimation.calculate_volume import calculate_food_volume
+from profile_estimations.calibration import calibrate, volume_range
+from profile_estimations.dish_calibration import reconstruct_with_record
 
 
 def dedupe_foods(foods, containment=0.4, iou_thresh=0.8):

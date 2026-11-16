@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.ndimage import binary_erosion
-from container_estimation import to_dish_coordinates, evaluate_profile, depth_to_3d
+from profile_estimations.container_estimation import to_dish_coordinates, evaluate_profile, depth_to_3d
 
 
 def evaluate_food_container(food_points, reconstruction, food_pixels=None,

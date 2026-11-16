@@ -1,6 +1,5 @@
 import numpy as np
 
-
 def calculate_food_volume(evaluation, food_mask=None, method="area", max_area_ratio=4.0):
     """
     method="area": sum(height * per-point footprint area) from evaluate_food_container.

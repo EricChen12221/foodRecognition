@@ -9,14 +9,17 @@ import transformers.dynamic_module_utils as dmu
 from segment_anything import SamPredictor, sam_model_registry
 from transformers import AutoModelForCausalLM, AutoProcessor
 
-from depth_estimation import estimate_depth
-from dish_calibration import calibrate_dish, record_from_profile
-from server import Cancelled
-from food_segmenter import FoodSegmenter
-from pipeline import measure_meal
-from rim_detection import RimDetector
+from models.depth_estimation import estimate_depth
+from models.food_segmenter import FoodSegmenter
+
+from profile_estimations.dish_calibration import calibrate_dish, record_from_profile
+from profile_estimations.rim_detection import RimDetector
 
 from errors import Cancelled
+
+from pipeline import measure_meal
+
+from food_estimation.food_debug import save_food_debug
 
 
 log = logging.getLogger(__name__)
@@ -35,6 +38,7 @@ MIN_FOOD_PIXELS = 300
 
 # Set DEBUG_RIM_DIR=/some/dir to save rim debug images (unique filename each).
 DEBUG_RIM_DIR = os.environ.get("DEBUG_RIM_DIR")
+DEBUG_FOOD_DIR = os.environ.get("DEBUG_FOOD_DIR")
 
 # SegFormer class names -> names in foods.csv. Anything not listed is used as-is.
 SEG_ALIASES = {
@@ -64,7 +68,7 @@ def _covered(mask, others):
 
 class MealAnalyzer:
     def __init__(self, segformer_repo=None, hf_token=None, sam_checkpoint="sam_vit_b_01ec64.pth"):
-        repo = segformer_repo or os.environ.get("SEGFORMER_REPO")
+        repo = segformer_repo or os.environ.get("SEGFORMER_REPO", "echen344/foodseg103-segformer-b5")
         if not repo:
             raise RuntimeError("Pass segformer_repo or set SEGFORMER_REPO.")
 
@@ -228,6 +232,12 @@ class MealAnalyzer:
                     "label": self._normalize(p["class_name"]),
                     "detector_label": None, "label_conf": None, "source": "segformer",
                 })
+                
+        if DEBUG_FOOD_DIR:
+            try:
+                save_food_debug(DEBUG_FOOD_DIR, image, od, probs, foods, containers, self)
+            except Exception:
+                log.exception("food debug images failed")
 
         log.info("foods: %s", [(f["label"], f["source"]) for f in foods])
         return foods, containers
@@ -276,7 +286,7 @@ class MealAnalyzer:
                 "container_class": "bowl" if "bowl" in str(profile.get("label", "")).lower()
                                    else "dinner_plate",
                 "known_diameter_m": profile.get("diameter"),
-                "shape_record": record_from_profile(profile),
+                "shape_record": record_from_profile(profile) if profile else None,
             })
 
         if not containers_in:

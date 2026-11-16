@@ -2,7 +2,7 @@ import json
 import numpy as np
 from scipy.optimize import least_squares
  
-from container_estimation import (
+from profile_estimations.container_estimation import (
     sample_ellipse, sample_depth, create_intrinsics, depth_to_3d,
     fit_plane, orient_normal, to_dish_coordinates, make_basis,
     refine_rim_center, get_visible_dish_points, _frame,
@@ -318,21 +318,3 @@ def shape_payload(record):
         "scaleFactor": record["scale_factor"],
         "nPhotos": record["n_photos"],
     }
-
-# ---------------------------------------------------------------------------
-# Usage
-# ---------------------------------------------------------------------------
-# Calibration (once per dish, empty dish, nothing in the mask but the dish):
-#   rec, warns = calibrate_dish(depth_empty, ellipse, dish_mask,
-#                               rim_diameter_mm=220.0, focal_length=0,
-#                               dish_id="blue_pasta_bowl", measured_depth_mm=47.0)
-#   for w in warns: print("WARNING:", w)
-#   save_record(rec, "blue_pasta_bowl.json")
-#
-# Several photos:
-#   rec = average_records([rec1, rec2, rec3])
-#
-# Meal time:
-#   rec = load_record("blue_pasta_bowl.json")
-#   out = reconstruct_with_record(depth_meal, ellipse, dish_mask, food_mask, 0, rec)
-#   plot_profile(out["dish_points"], out["profile"])   # your existing function

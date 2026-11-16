@@ -18,6 +18,9 @@ from PIL import Image, ImageOps
 
 from typing import List
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Optional: lets Pillow open HEIC photos if pillow-heif is installed.
 try:
     from pillow_heif import register_heif_opener
@@ -120,8 +123,8 @@ def create_app():
     from fastapi import Body, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, Form
     from typing import Any, Dict, Optional
 
-    from dish_calibration import shape_payload
-    from meal_analyzer_clip import MealAnalyzer
+    from profile_estimations.dish_calibration import shape_payload
+    from model import MealAnalyzer
 
     from errors import Cancelled
 

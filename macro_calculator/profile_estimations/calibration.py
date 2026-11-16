@@ -1,28 +1,15 @@
 import numpy as np
-from container_estimation import reconstruct_dish
-
+from profile_estimations.container_estimation import reconstruct_dish
 PLATE_DIAMETER_M = 0.26
 
 
 def estimate_depth_scale(depth_map, ellipse, container_mask, food_mask, focal_length,
                          known_diameter_m=PLATE_DIAMETER_M):
-    """
-    Factor s that makes the fitted rim radius equal the real one.
-
-    Every 3D coordinate is proportional to the depth values (x = (u-cx)*z/fx),
-    so multiplying the depth map by s scales the whole scene by s: lengths by s,
-    areas by s^2, volumes by s^3. The intrinsics K do not change.
-    """
     rec = reconstruct_dish(depth_map, ellipse, container_mask, food_mask, focal_length)
     return (known_diameter_m / 2.0) / rec["profile"]["rim_radius"]
 
 
 def check_scale_from_ellipse(ellipse_full_axes_px, focal_px, known_diameter_m=PLATE_DIAMETER_M):
-    """
-    Independent sanity check that does not use the depth map: for a plate seen
-    roughly top-down, distance = focal * real_diameter / apparent_diameter.
-    Compare with the median rim depth after calibration.
-    """
     d_px = max(ellipse_full_axes_px)
     return focal_px * known_diameter_m / d_px
 
@@ -40,18 +27,10 @@ CONTAINER_PRIORS = {
     "large_bowl":   (0.23,  0.20, 0.26),
     "rice_bowl":    (0.12,  0.10, 0.14),
 }
-USER_DIAMETER_UNCERTAINTY = 0.03       # relative; a typed or measured size
+USER_DIAMETER_UNCERTAINTY = 0.03       
 
 
 def choose_scale(model_rim_radius_m, container_class="dinner_plate", known_diameter_m=None):
-    """
-    model_rim_radius_m: rim_radius from reconstruct_dish on the UNSCALED depth.
-    Returns dict(scale, diameter_m, source, rel_uncertainty).
-
-    known_diameter_m (user-confirmed or measured) always wins.
-    Otherwise: keep the model's scale if its implied diameter is plausible for
-    the container class, else snap to the class's typical diameter.
-    """
     model_d = 2.0 * model_rim_radius_m
     if known_diameter_m:
         return {"scale": known_diameter_m / model_d, "diameter_m": known_diameter_m,
