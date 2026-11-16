@@ -19,21 +19,35 @@ A personal React Native app that estimates the calories, protein, carbs and fat 
 ```
 Phone (React Native)  ->  Node / Express  ->  Python / FastAPI
 camera and UI             accounts, macros,    vision models
-                          MongoDB              (Florence-2, SAM, MoGe)
+                          MongoDB              (Florence-2, SegFormer, SAM, MoGe)
 ```
 
-1. **Analyze.** The photo is sent to the Python server, which finds the container and each food.
+1. **Analyze.** The photo is sent to the Python server, which finds the container and each food (see below).
 2. **Check.** You pick which saved plate or bowl was used and fix any wrong food names.
 3. **Estimate.** The server uses a depth map and your dish's diameter to estimate each food's volume.
 4. **Convert.** Node multiplies volume by density and nutrition per 100 g from `foods.csv`.
 5. **Log.** The meal is saved under today's date and the day's totals update.
+
+### What the vision server does
+
+**Stage 1: find the foods and the dish.**
+
+- **Florence-2** detects objects in the photo and finds the plate or bowl.
+- **SAM** (Segment Anything) outlines each detection.
+- **SegFormer**, trained on FoodSeg103, checks that each outline is really food, names it, and finds food regions Florence missed.
+- Duplicate and merged masks (for example one box around several eggs) are removed.
+
+**Stage 2: measure.**
+
+- **MoGe** estimates a depth map. The plate rim and your dish's diameter set the scale.
+- Each food's volume comes from its mask and its height above the dish.
 
 ## Tech stack
 
 - **App:** React Native, TypeScript, React Navigation, `react-native-vision-camera`
 - **API:** Node.js, Express, TypeScript, Mongoose
 - **Database:** MongoDB
-- **Vision:** Python 3.11, FastAPI, PyTorch, Florence-2, Segment Anything, MoGe
+- **Vision:** Python 3.11, FastAPI, PyTorch, Florence-2, SegFormer (FoodSeg103), Segment Anything, MoGe
 
 ## Project structure
 
@@ -41,6 +55,13 @@ camera and UI             accounts, macros,    vision models
 frontend/         React Native app (screens, hooks, API services)
 backend/          Node API (routes, models, foods.csv)
 macro_calculator/ Python vision server
+  server.py              FastAPI endpoints (/calibrate, /analyze, /estimate)
+  model.py               MealAnalyzer: runs the vision models
+  pipeline.py            volume measurement and duplicate removal
+  errors.py              shared exceptions
+  models/                depth estimation, SegFormer wrapper, classifier
+  profile_estimations/   rim detection, dish calibration, container shape
+  food_estimation/       food alignment, volume calculation, debug images
 ```
 
 ## Setup
@@ -54,17 +75,38 @@ Start things in this order: Python, then Node, then the app.
 ```bash
 cd macro_calculator
 python3.11 -m venv moge_env && source moge_env/bin/activate
-pip install fastapi uvicorn python-multipart torch transformers pillow numpy scipy matplotlib
+pip install fastapi uvicorn python-multipart torch transformers pillow numpy scipy matplotlib opencv-python python-dotenv
 ```
 
 Install MoGe and Segment Anything from their repositories, and download the SAM checkpoint
-(`sam_vit_b_01ec64.pth`) into this folder. Then run:
+(`sam_vit_b_01ec64.pth`) into this folder.
+
+Create `macro_calculator/.env`:
+
+```
+SEGFORMER_REPO=<Hugging Face repo id of your food segmentation model>
+HF_TOKEN=<your Hugging Face token>
+```
+
+`HF_TOKEN` is only needed if the SegFormer repo is private. Keep this file out of git.
+
+Then run:
 
 ```bash
 uvicorn server:app --host 127.0.0.1 --port 8000
 ```
 
+The first start downloads the Florence-2 and SegFormer models, so it is slow. Later starts use the local cache.
 Wait for "Application startup complete". Keep it on `127.0.0.1` so only the Node server can reach it.
+
+Optional settings (in the same `.env`):
+
+| Variable | What it does |
+|---|---|
+| `SEGFORMER_REPO` | Hugging Face repo id of the food segmentation model. Falls back to a built-in default. |
+| `HF_TOKEN` | Token for private Hugging Face repos. |
+| `DEBUG_FOOD_DIR` | Saves food debug images for each analysis (see Debugging). |
+| `DEBUG_RIM_DIR` | Saves the detected plate rim for each estimate (see Debugging). |
 
 ### 2. Node API
 
@@ -111,12 +153,43 @@ Rebuild the iOS app whenever you add a package with native code. A JavaScript re
 Density is g/ml, nutrition is per 100 g, and `basis` is `solid`, `pile` or `liquid`.
 The values are approximate, so check the ones you rely on and add the foods you eat.
 
+SegFormer's food names come from FoodSeg103 and some are unusual (for example "hamburg" for hamburger).
+Names that aren't in `foods.csv` show "no estimate" until you add a row or rename the food in the app.
+
+## Performance
+
+On the warm-up photo (`yumgrub.jpg`: eggs, carrots, orange slices and two muffins on one plate), the Python
+server takes about **16 seconds** on average to run both stages, finding the foods and then estimating
+volumes. This was measured on Apple Silicon using MPS. It does not include uploading the photo or the Node step.
+
+- The server runs this photo once at startup, so the first real request doesn't pay the model warm-up cost.
+- Uploads are resized to 1280 px on the longest side, so large originals don't add time.
+- Plates with more foods take longer, because each food needs its own mask.
+- Photos are processed one at a time. Up to four more can wait in line before the server answers "busy" (429).
+
+## Debugging
+
+Set these in `macro_calculator/.env` (or export them) before starting the Python server. Each saves
+images into the folder you give, so you can see what the models did.
+
+**`DEBUG_FOOD_DIR=/some/folder`** saves three images for every analysis:
+
+| File ends with | Shows |
+|---|---|
+| `_1_florence.jpg` | Every box Florence found. Green = kept as a food, gray = treated as the container, red = dropped. |
+| `_2_segformer.jpg` | What SegFormer sees across the whole photo, before any SAM outlining. |
+| `_3_final.jpg` | The masks that were kept, each labelled with its name and where it came from: `florence`, `segformer` or `residual`. |
+
+**`DEBUG_RIM_DIR=/some/folder`** saves an image of the detected plate rim for each container.
+
+The startup warm-up also writes debug images, so you will see a set as soon as the server is ready.
+
 ## Accuracy and limits
 
 - **Estimates only.** Height comes from a single-photo depth model, so results vary. Thin foods like bread are the least reliable.
 - **Dish diameter matters a lot.** Volume scales with its cube, so measure the outer rim with a ruler.
 - **Hidden foods and saucy dishes** (stews, curries) are hard to measure and may need renaming.
-- **Check the names.** The detector sometimes guesses wrong.
+- **Check the names.** The detector sometimes guesses wrong, and SegFormer can split one food across several odd names (a muffin may show up as "bread" or "pie").
 - **One photo at a time.** Built for one person or a few, not many users at once.
 - **Accounts belong to the install.** Deleting the app loses the account.
 
@@ -131,6 +204,9 @@ The values are approximate, so check the ones you rely on and add the foods you 
 | "AsyncStorage is null" | Rebuild the iOS app after `pod install`. |
 | "No foods were found" | Retake the photo with better light and the whole plate in view. |
 | Estimate looks too high or low | Check the profile's diameter. |
+| `401` or "Repository Not Found" from Hugging Face on startup | Set `HF_TOKEN` in `macro_calculator/.env` and check `SEGFORMER_REPO` is spelled exactly as on huggingface.co. |
+| "Warm-up failed (server will still start)" | Read the traceback printed above that line. The server starts anyway, but real requests will probably fail the same way. |
+| `ModuleNotFoundError` after moving files | Imports use the full folder path, for example `from profile_estimations.rim_detection import RimDetector`. Run uvicorn from `macro_calculator/`. |
 
 ## Roadmap
 
