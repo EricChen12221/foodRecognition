@@ -1,7 +1,17 @@
 import mongoose from 'mongoose'
 import User from '../models/user'
  
-type ProfileJson = { id: string; label: string; diameter: number; shape?: unknown }
+type ProfileShape = {
+  knotsZOverR: number[]
+  depthFrac?: number
+  floorFrac?: number
+  fitRms?: number
+  scaleFactor?: number
+  nPhotos?: number
+  calibratedAt?: Date
+}
+
+type ProfileJson = { id: string; label: string; diameter: number; shape?: ProfileShape }
  
 const profilesOf = (user: { toJSON: () => unknown }) => (user.toJSON() as any).profiles as ProfileJson[]
  
@@ -42,19 +52,47 @@ async function updateProfile(
   patch: { label?: string; diameter?: number },
 ) {
   assertProfileId(profileId)
- 
   const set: Record<string, unknown> = {}
   if (patch.label !== undefined) set['profiles.$.label'] = patch.label.trim()
-  if (patch.diameter !== undefined) set['profiles.$.diameter'] = patch.diameter
+
+  // Guards the update against a concurrent diameter change (see filter below).
+  let expectedDiameter: number | undefined
+
+  if (patch.diameter !== undefined) {
+    set['profiles.$.diameter'] = patch.diameter
+
+    const existingUser = await User.findOne(
+      { _id: userId, 'profiles._id': profileId },
+      { 'profiles.$': 1 },
+    )
+    if (!existingUser) throw new Error('Unknown user or profile.')
+    const existing = profilesOf(existingUser).find((p) => String(p.id) === profileId)
+    if (!existing) throw new Error('Unknown user or profile.')
+
+    expectedDiameter = existing.diameter
+
+    const oldScale = existing.shape?.scaleFactor
+    if (oldScale != null && existing.diameter > 0) {
+      set['profiles.$.shape.scaleFactor'] = oldScale * (existing.diameter / patch.diameter)
+    }
+  }
+
   if (Object.keys(set).length === 0) throw new Error('Nothing to update.')
- 
+
   const user = await User.findOneAndUpdate(
-    { _id: userId, 'profiles._id': profileId },   
-    { $set: set },                               
+    {
+      _id: userId,
+      profiles: {
+        $elemMatch: {
+          _id: profileId,
+          ...(expectedDiameter !== undefined && { diameter: expectedDiameter }),
+        },
+      },
+    },
+    { $set: set },
     { returnDocument: 'after', runValidators: true },
   )
   if (!user) throw new Error('Unknown user or profile.')
- 
   const updated = profilesOf(user).find((p) => String(p.id) === profileId)
   if (!updated) throw new Error('Profile was not saved.')
   return updated
