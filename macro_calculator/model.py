@@ -10,14 +10,15 @@ import transformers.dynamic_module_utils as dmu
 from segment_anything import SamPredictor, sam_model_registry
 from transformers import AutoModelForCausalLM, AutoProcessor
 
-from errors import Cancelled
 from food_estimation.food_debug import save_food_debug
 from models.depth_estimation import estimate_depth
 from models.food_segmenter import FoodSegmenter
-from pipeline import dedupe_foods, measure_meal
 from profile_estimations.dish_calibration import calibrate_dish, record_from_profile
 from profile_estimations.rim_detection import RimDetector
 
+from pipeline import dedupe_foods, measure_meal
+
+from errors import Cancelled
 
 log = logging.getLogger(__name__)
 
