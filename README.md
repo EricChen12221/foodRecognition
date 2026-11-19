@@ -216,4 +216,5 @@ The startup warm-up also writes debug images, so you will see a set as soon as t
 - [x] Logging meals into daily totals
 - [X] Remove a logged meal from the Tracker
 - [X] Load today's meals into the Tracker at startup
-- [ ] Better detection for mixed dishes and rice
+- [X] Better detection for mixed dishes and rice
+- [ ] More accurate macro estimation 
