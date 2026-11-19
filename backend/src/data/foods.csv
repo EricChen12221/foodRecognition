@@ -7,7 +7,8 @@ biscuit,0.5,450,6.0,20.0,64.0,solid
 popcorn,0.07,387,12.9,4.5,77.8,pile
 pudding,1.1,110,2.9,3.2,17.0,solid
 ice cream,0.56,207,3.5,11.0,23.6,solid
-cheese butter,1.0,450,15.0,40.0,1.0,solid
+cheese,1.0,450,15.0,40.0,1.0,solid
+butter,1.0,450,15.0,40.0,1.0,solid
 cake,0.45,350,5.0,15.0,50.0,solid
 wine,0.99,83,0.1,0.0,2.6,liquid
 milkshake,1.05,112,3.1,3.2,17.0,liquid
