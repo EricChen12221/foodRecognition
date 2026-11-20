@@ -54,7 +54,7 @@ Set `DEBUG_FOOD_DIR` and `DEBUG_RIM_DIR` in `macro_calculator/.env` (or export t
 
 Every box Florence found. Green is kept as a food, gray is treated as the container, and red is dropped.
 
-![Florence detections](./macro_estimator/debug_food/1_florence.jpg)
+![Florence detections](./macro_calculator/debug_food/1_florence.jpg)
 
 The bowl is gray and the green vegetables are kept. The person and footwear boxes are red because SegFormer says they are not food. Florence missed the fish entirely, which the next step catches.
 
@@ -62,7 +62,7 @@ The bowl is gray and the green vegetables are kept. The person and footwear boxe
 
 What SegFormer sees across the whole photo, before any SAM outlining.
 
-![SegFormer output](./macro_estimator/debug_food/2_segformer.jpg)
+![SegFormer output](./macro_calculator/debug_food/2_segformer.jpg)
 
 SegFormer finds the fish, but it splits the vegetables into two overlapping classes: "asparagus" and "french beans". Its masks are blocky because it predicts at low resolution.
 
@@ -70,7 +70,7 @@ SegFormer finds the fish, but it splits the vegetables into two overlapping clas
 
 The masks that were kept, each labelled with its name and where it came from: `florence`, `segformer` or `residual`.
 
-![Final foods](./macro_estimator/debug_food/3_final.jpg)
+![Final foods](./macro_calculator/debug_food/3_final.jpg)
 
 The vegetables come from Florence and are outlined cleanly by SAM, and they take the name "french beans". The fish comes from SegFormer, which found it after Florence missed it. The overlapping "asparagus" region was dropped as a duplicate, because most of it was already covered by the french beans mask.
 
@@ -80,7 +80,7 @@ If a food is missing from the final image, check the first two images to see whe
 
 `DEBUG_RIM_DIR=/some/folder` saves one image per container, showing the rim the server found. The rim sets the scale for every volume estimate.
 
-![Detected rim](./macro_estimator/debug_rim/rim.jpg)
+![Detected rim](./macro_calculator/debug_rim/rim.jpg)
 
 The red ellipse is the fitted rim. The magenta and yellow points are the edge pixels that support the fit, and the green dot is the ellipse center. A good result looks like this one, with the ellipse hugging the outer edge of the bowl and edge points covering most of the circumference.
 
