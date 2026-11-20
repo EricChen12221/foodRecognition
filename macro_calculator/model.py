@@ -344,16 +344,31 @@ class MealAnalyzer:
                 continue
 
             profile = c.get("radial_profile") or {}
+            container_class = "bowl" if "bowl" in str(profile.get("label", "")).lower() \
+                else "dinner_plate"
+
+            shape_record = None
+            if profile:
+                try:
+                    shape_record = record_from_profile(profile)
+                except ValueError as e:
+                    # missing shape or saved under a different KX grid: ignore it, don't fail
+                    log.warning("Container %d: calibration unusable (%s), estimating without it", i, e)
+
+            known_d = profile.get("diameter")
+            if known_d is None:
+                known_d = DEFAULT_DIAMETER_M[container_class]
+                log.info("Container %d: no diameter, assuming %.2f m %s", i, known_d, container_class)
+
             containers_in.append({
                 "key": f"container_{i}",
                 "rim": rim,
                 "mask": c["mask"],
-                "container_class": "bowl" if "bowl" in str(profile.get("label", "")).lower()
-                                   else "dinner_plate",
-                "known_diameter_m": profile.get("diameter"),
-                "shape_record": record_from_profile(profile) if profile else None,
+                "container_class": container_class,
+                "known_diameter_m": known_d,
+                "shape_record": shape_record,
             })
-
+            
         if not containers_in:
             raise ValueError("No plate or bowl with a usable rim was found in the photo.")
 
