@@ -42,6 +42,58 @@ camera and UI             accounts, macros,    vision models
 - **MoGe** estimates a depth map. The plate rim and your dish's diameter set the scale.
 - Each food's volume comes from its mask and its height above the dish.
 
+## Debugging with images
+
+Set `DEBUG_FOOD_DIR` and `DEBUG_RIM_DIR` in `macro_calculator/.env` (or export them) before starting the Python server. Each analysis then saves images showing what the models did. The examples below are from one photo: pan-seared fish with green beans in a white bowl.
+
+### Food segmentation
+
+`DEBUG_FOOD_DIR=/some/folder` saves three images per analysis, one for each step of finding foods.
+
+**1. Florence-2 detection** (`_1_florence.jpg`)
+
+Every box Florence found. Green is kept as a food, gray is treated as the container, and red is dropped.
+
+![Florence detections](./macro_estimator/debug_food/1_florence.jpg)
+
+The bowl is gray and the green vegetables are kept. The person and footwear boxes are red because SegFormer says they are not food. Florence missed the fish entirely, which the next step catches.
+
+**2. SegFormer** (`_2_segformer.jpg`)
+
+What SegFormer sees across the whole photo, before any SAM outlining.
+
+![SegFormer output](./macro_estimator/debug_food/2_segformer.jpg)
+
+SegFormer finds the fish, but it splits the vegetables into two overlapping classes: "asparagus" and "french beans". Its masks are blocky because it predicts at low resolution.
+
+**3. Final foods** (`_3_final.jpg`)
+
+The masks that were kept, each labelled with its name and where it came from: `florence`, `segformer` or `residual`.
+
+![Final foods](./macro_estimator/debug_food/3_final.jpg)
+
+The vegetables come from Florence and are outlined cleanly by SAM, and they take the name "french beans". The fish comes from SegFormer, which found it after Florence missed it. The overlapping "asparagus" region was dropped as a duplicate, because most of it was already covered by the french beans mask.
+
+If a food is missing from the final image, check the first two images to see whether Florence or SegFormer saw it. If a name is wrong, rename it in the app. SegFormer's names come from FoodSeg103.
+
+### Rim detection
+
+`DEBUG_RIM_DIR=/some/folder` saves one image per container, showing the rim the server found. The rim sets the scale for every volume estimate.
+
+![Detected rim](./macro_estimator/debug_rim/rim.jpg)
+
+The red ellipse is the fitted rim. The magenta and yellow points are the edge pixels that support the fit, and the green dot is the ellipse center. A good result looks like this one, with the ellipse hugging the outer edge of the bowl and edge points covering most of the circumference.
+
+Rims whose edge support (arc coverage) is below 0.5 are rejected, and the container is skipped. Signs of a bad rim:
+
+- The ellipse is visibly bigger or smaller than the dish.
+- Edge points cover only one side of the dish.
+- The ellipse follows a shadow, a countertop pattern or a table edge instead of the rim.
+
+If the rim fails, retake the photo from directly above with the whole dish in frame, on a plain surface with even light.
+
+The startup warm-up photo also writes debug images, so you will see a set as soon as the server is ready.
+
 ## Tech stack
 
 - **App:** React Native, TypeScript, React Navigation, `react-native-vision-camera`
