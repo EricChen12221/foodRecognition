@@ -108,6 +108,7 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
     food_union = np.zeros(depth_map.shape[:2], dtype=bool)
     for f in foods:
         food_union |= np.asarray(f["mask"]) > 0
+    
 
     # 1. scale from the reference container
     ref = containers[reference]
@@ -143,6 +144,14 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
                 f"mean_h_cm={f['eval']['food_heights'].mean() * 100:.1f}")
     diagnose(foods, reconstructions, scaled_depth)
 
+    h = f["eval"]["food_heights"] * 1000
+    stretch = rec.get("depth_stretch", float("nan"))
+    resid_mm = rec.get("wall_resid_mean_mm", float("nan")) * 1000   # see note below
+    print(f"  {f.get('label')}: h_mm p10/p50/p90="
+        f"{np.percentile(h,10):.1f}/{np.percentile(h,50):.1f}/{np.percentile(h,90):.1f} "
+        f"stretch={stretch:.2f} wall_resid_mean_mm={resid_mm:.1f}")
+    
+
     # 4. attach volumes to the SAME food dicts (label, box, mask, score are kept)
     u = info["rel_uncertainty"]
     for food in assigned:
@@ -153,6 +162,7 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
         food["volume_ml"] = vol_ml
         food["volume_ml_low"], food["volume_ml_high"] = volume_range(vol_ml, u)
 
+    
     return {
         "foods": combine_by_label(assigned),                  # one dict per input food, original order
         "unassigned": [f for f in assigned if f["container"] == "None"],

@@ -15,6 +15,7 @@ from models.depth_estimation import estimate_depth
 from models.food_segmenter import FoodSegmenter
 from profile_estimations.dish_calibration import calibrate_dish, record_from_profile
 from profile_estimations.rim_detection import RimDetector
+from profile_estimations.calibration import PLATE_DIAMETER_M
 
 from pipeline import dedupe_foods, measure_meal
 
@@ -140,7 +141,7 @@ class MealAnalyzer:
 
     @staticmethod
     def _depth(image):
-        r = estimate_depth(np.array(image), max_side=768, cache_dir=None)
+        r = estimate_depth(np.array(image), cache_dir=None)
         return r["depth"], r["focal_px"]
 
     @staticmethod
@@ -176,13 +177,21 @@ class MealAnalyzer:
             check()
             depth, focal = self._depth(image)
 
+            fov = np.degrees(2 * np.arctan(0.5 * image.width / focal))
+
         rim = RimDetector().detect(image=image, container_box=box, container_mask=mask, depth=depth)
         if rim is None or rim["arc_coverage"] < MIN_RIM_ARC:
             raise ValueError("The rim was not clearly visible. Use a plain surface and good light.")
 
         check()
-        return calibrate_dish(depth, rim["ellipse_params"], mask, diameter_m * 1000.0, focal,
-                              measured_depth_mm=measured_depth_mm)
+        record, warnings = calibrate_dish(depth, rim["ellipse_params"], rim["arc_coverage"], mask, diameter_m * 1000.0, focal,
+                                          measured_depth_mm=measured_depth_mm)
+
+        fov = np.degrees(2 * np.arctan(0.5 * image.width / focal))
+        print(f"CALIB fov={fov:.1f} arc={rim['arc_coverage']:.2f} "
+              f"depth_mm={record['depth_mm']:.0f} scale={record['scale_factor']:.1f} "
+              f"rms={record['fit_rms_over_R']:.3f}")
+        return record, warnings
 
     def find_foods_and_containers(self, image, should_stop=_never):
         """Stage 1: photo -> (foods, container_masks)."""
@@ -357,7 +366,7 @@ class MealAnalyzer:
 
             known_d = profile.get("diameter")
             if known_d is None:
-                known_d = DEFAULT_DIAMETER_M[container_class]
+                known_d = PLATE_DIAMETER_M
                 log.info("Container %d: no diameter, assuming %.2f m %s", i, known_d, container_class)
 
             containers_in.append({
@@ -368,7 +377,7 @@ class MealAnalyzer:
                 "known_diameter_m": known_d,
                 "shape_record": shape_record,
             })
-            
+
         if not containers_in:
             raise ValueError("No plate or bowl with a usable rim was found in the photo.")
 
