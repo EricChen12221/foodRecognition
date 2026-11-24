@@ -184,7 +184,7 @@ class MealAnalyzer:
             raise ValueError("The rim was not clearly visible. Use a plain surface and good light.")
 
         check()
-        record, warnings = calibrate_dish(depth, rim["ellipse_params"], rim["arc_coverage"], mask, diameter_m * 1000.0, focal,
+        record, warnings = calibrate_dish(depth, rim["ellipse_params"], mask, diameter_m * 1000.0, focal,
                                           measured_depth_mm=measured_depth_mm)
 
         fov = np.degrees(2 * np.arctan(0.5 * image.width / focal))

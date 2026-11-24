@@ -19,17 +19,7 @@ def profile_knots(d, R, w, kx=KX):
     s = np.clip(kx - w, 0.0, None) * R
     return -(d - (rho - np.sqrt(np.maximum(rho ** 2 - s ** 2, 0.0))))
  
- 
-# Parametric flat-floor model (summary numbers d and w)
-def profile_knots(d, R, w, kx=KX):
-    """z at kx = r/R: flat floor of radius w*R, then a tangent circular wall up to the rim."""
-    L = (1.0 - w) * R
-    rho = (L ** 2 + d ** 2) / (2.0 * d)
-    s = np.clip(kx - w, 0.0, None) * R
-    return -(d - (rho - np.sqrt(np.maximum(rho ** 2 - s ** 2, 0.0))))
- 
- 
-def fit_flat_floor(pts_cam, rim_3d, rim_arc, normal0, center0, R0,
+def fit_flat_floor(pts_cam, rim_3d, normal0, center0, R0,
                    w_rim=3.0, max_points=8000, inner_frac=0.97, seed=0):
     """
     Fit tilt (2), center shift (2), rim radius, depth d and floor fraction w.
@@ -52,14 +42,8 @@ def fit_flat_floor(pts_cam, rim_3d, rim_arc, normal0, center0, R0,
         rim = w_rim * np.concatenate([np.hypot(dr[:, 0], dr[:, 1]) - R, dr[:, 2]])
         return np.concatenate([data, rim])
  
-    lb = [-0.5, -0.5, -0.3 * R0, -0.3 * R0, 0.8 * R0, 0.05 * R0, 0.0]
-    ub = [0.5, 0.5, 0.3 * R0, 0.3 * R0, 1.2 * R0, 0.9 * R0, 0.7]
-
-    x0 = np.array([0, 0, 0, 0, R0, 1.0], dtype=float)
-    print("lb", np.round(lb, 4), "\nub", np.round(ub, 4), "\nx0", np.round(x0, 4), "arc", rim_arc)
-    assert len(lb) == len(ub) == len(x0) == 6, (len(lb), len(ub), len(x0))
-    assert np.all(np.isfinite(lb)) and np.all(np.isfinite(ub)), "NaN in bounds"
-    assert np.all(x0 >= lb) and np.all(x0 <= ub), "x0 outside bounds"
+    lb = [-0.5, -0.5, -0.3 * R0, -0.3 * R0, 0.97 * R0, 0.05 * R0, 0.0]
+    ub = [ 0.5,  0.5,  0.3 * R0,  0.3 * R0, 1.03 * R0, 0.9 * R0, 0.7]
     
     best = None
     for w0 in (0.0, 0.3, 0.6):
@@ -121,7 +105,7 @@ def _rim_and_scale(depth_map, ellipse, K, rim_diameter=None):
  
  
 # Calibration from an empty-dish photo
-def calibrate_dish(depth_map, ellipse, rim_arc, container_mask, rim_diameter_mm, focal_length,
+def calibrate_dish(depth_map, ellipse, container_mask, rim_diameter_mm, focal_length,
                    dish_id="dish", measured_depth_mm=None):
     """
     depth_map:         (H, W) depth of the EMPTY dish, any units
@@ -143,16 +127,20 @@ def calibrate_dish(depth_map, ellipse, rim_arc, container_mask, rim_diameter_mm,
     if len(pts_cam) < 2000:
         raise ValueError(f"Only {len(pts_cam)} dish points; check the dish mask.")
  
-    fit = fit_flat_floor(pts_cam, rim_3d, rim_arc, normal, center0, R0)
+    fit = fit_flat_floor(pts_cam, rim_3d, normal, center0, R0)
     R = fit["R"]
+    R_diam = rim_diameter_mm / 2.0
     dish_pts = to_dish_coordinates(pts_cam, fit["center"], fit["basis"])
     emp_z, min_x = empirical_profile(dish_pts, R)
- 
+
     model_z = profile_knots(fit["d"], R, fit["w"], KX) / R
     inner = KX <= 0.97
     rms = float(np.sqrt(np.mean((emp_z[inner] - model_z[inner]) ** 2)))
- 
-    depth_mm = float(-emp_z[0] * R)
+
+    print(f"R_fit={R:.1f} R_diam={R_diam:.1f} ratio={R / R_diam:.3f}")   # diagnostic, remove later
+
+    emp_z = emp_z * (R / R_diam)            # express z as a fraction of the diameter radius
+    depth_mm = float(-emp_z[0] * R_diam)    # now equals depthFrac * diameter / 2, what the app shows
  
     warnings = []
     if min_x > 0.10:
@@ -207,72 +195,71 @@ def save_record(record, path):
 def load_record(path):
     with open(path) as f:
         return json.load(f)
- 
- 
 
-# Meal time: fixed stored profile, fit only the pose
 def fit_pose_known_profile(pts_cam, rim_3d, normal0, center0, R0, record,
-                           w_rim=3.0, max_points=5000, inner_frac=0.97, seed=0):
-    """Fit tilt (2), center shift (2) and a tightly bounded rim radius; the shape is fixed."""
+                           rim_arc=1.0, max_points=5000, inner_frac=0.97,
+                           r_min=0.5, s_lo=0.85, s_hi=1.15, seed=0, **_):
+    """
+    Pose (normal, center, radius) comes from the rim alone. Only the depth stretch s is
+    fitted, from visible dish points on the wall (r_min..inner_frac of R), which are far
+    from food sitting in the middle.
+    """
     kx = np.array(record["knots_x"])
     kz = np.array(record["knots_z_over_R"])
- 
+
     rng = np.random.default_rng(seed)
     if len(pts_cam) > max_points:
         pts_cam = pts_cam[rng.choice(len(pts_cam), max_points, replace=False)]
+
     basis0 = make_basis(normal0)
- 
-    def residuals(th):
-        a, b, dx, dy, R = th
-        c, basis, _ = _frame(normal0, basis0, a, b, center0, dx, dy)
-        dd = to_dish_coordinates(pts_cam, c, basis)
-        r = np.hypot(dd[:, 0], dd[:, 1])
-        zf = np.interp(r / R, kx, kz) * R
-        data = (r < inner_frac * R) * (dd[:, 2] - zf)
-        dr = to_dish_coordinates(rim_3d, c, basis)
-        rim = w_rim * np.concatenate([np.hypot(dr[:, 0], dr[:, 1]) - R, dr[:, 2]])
-        return np.concatenate([data, rim])
- 
-    lb = [-0.1, -0.1, -0.3 * R0, -0.3 * R0, 0.97 * R0, 0.95]
-    ub = [0.1, 0.1, 0.3 * R0, 0.3 * R0, 1.03 * R0, 1.05]
-    sol = least_squares(residuals, [0, 0, 0, 0, R0], bounds=(lb, ub),
-                        loss="soft_l1", f_scale=0.01 * R0)
- 
-    a, b, dx, dy, R = sol.x
-    c, basis, n = _frame(normal0, basis0, a, b, center0, dx, dy)
-    # Same keys as the profile dict from fit_cap_profile, so evaluate_profile and plot_profile work.
+    c, basis, n = _frame(normal0, basis0, 0.0, 0.0, center0, 0.0, 0.0)   # no pose corrections
+    R = R0
+
+    dd = to_dish_coordinates(pts_cam, c, basis)
+    r = np.hypot(dd[:, 0], dd[:, 1]) / R
+    sel = (r > r_min) & (r < inner_frac)
+    z = dd[sel, 2]
+    zf = np.interp(r[sel], kx, kz) * R
+
+    s = 1.0
+    if sel.sum() >= 200:
+        w = np.ones_like(z)
+        for _ in range(3):                                   # trimmed refits drop food-edge outliers
+            s = float(np.sum(w * z * zf) / np.sum(w * zf * zf))
+            res = z - s * zf
+            cut = np.percentile(np.abs(res), 85)
+            w = (np.abs(res) <= cut).astype(float)
+    s = float(np.clip(s, s_lo, s_hi))
+
     return {"normal": n, "center": c, "basis": basis, "rim_radius": R,
-            "knots_x": kx, "knots_z": kz * R, "depth_frac": float(-kz[0]),
-            "floor_frac": record["floor_frac"]}
- 
- 
+            "knots_x": kx, "knots_z": kz * R * s, "depth_stretch": s,
+            "depth_frac": float(-kz[0] * s), "floor_frac": record["floor_frac"]}
+
+
 def reconstruct_with_record(depth_map, ellipse, container_mask, food_mask,
-                            focal_length, record, rescale=True, units_per_mm=1.0):
-    """
-    Reconstruction using a stored dish record. Returns the same keys as reconstruct_dish.
- 
-    rescale=True:   depth_map is in arbitrary units; rescale it so the fitted rim equals
-                    the record's rim diameter (output in mm).
-    rescale=False:  depth_map is already scaled (e.g. by your calibrate step); keep its units.
-    unit_scale:     depth-map length unit expressed in mm, only used for rescale=False
-                    (1e-3 for a depth map in meters). Used for the rim_ratio check.
- 
-    rim_ratio = fitted rim radius / expected rim radius. Far from 1 means the scale is wrong
-    for this dish (or the record belongs to a different dish).
-    """
+                            focal_length, record, rescale=True, units_per_mm=1.0,
+                            rim_arc=1.0):
     h, w_img = depth_map.shape[:2]
     K = create_intrinsics(w_img, h, focal_length)
- 
+
     D_mm = record["rim_diameter_mm"]
     rim_in, normal, center0, R0, scale = _rim_and_scale(
         depth_map, ellipse, K, D_mm if rescale else None)
- 
+
     pts_cam = get_visible_dish_points(depth_map, container_mask, food_mask, K) * scale
     if len(pts_cam) < 500:
         raise ValueError(f"Only {len(pts_cam)} visible dish points; the dish is hidden or masked.")
- 
-    profile = fit_pose_known_profile(pts_cam, rim_in, normal, center0, R0, record)
- 
+
+    profile = fit_pose_known_profile(pts_cam, rim_in, normal, center0, R0, record,
+                                     rim_arc=rim_arc)
+
+    # Diagnostic: how well does the placed profile match the visible wall?
+    dd_vis = to_dish_coordinates(pts_cam, profile["center"], profile["basis"])
+    r_vis = np.hypot(dd_vis[:, 0], dd_vis[:, 1])
+    inside = r_vis < 0.97 * profile["rim_radius"]
+    zf_vis = np.interp(r_vis / profile["rim_radius"], profile["knots_x"], profile["knots_z"])
+    wall_resid = dd_vis[inside, 2] - zf_vis[inside]
+
     expected_R = (D_mm / 2.0) * (1.0 if rescale else units_per_mm)
     return {
         "K": K,
@@ -286,6 +273,9 @@ def reconstruct_with_record(depth_map, ellipse, container_mask, food_mask,
         "dish_points": to_dish_coordinates(pts_cam, profile["center"], profile["basis"]),
         "profile": profile,
         "foods": [],
+        "wall_resid_mean_mm": float(wall_resid.mean()),
+        "wall_resid_std_mm": float(wall_resid.std()),
+        "depth_stretch": profile["depth_stretch"],
     }
 
 def record_from_profile(profile):
