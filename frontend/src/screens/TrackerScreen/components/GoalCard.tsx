@@ -1,9 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { Goals, SavedMeal } from '../../../types';
-
-// Placeholder targets. Pass your own `goals` prop (e.g. from the Profile tab) to override.
-export const DEFAULT_GOALS: Goals = { kcal: 2000, protein: 120, carbs: 220, fat: 65 };
+import { DEFAULT_GOALS } from '../../../settings'
 
 const GREEN = '#14634b';
 const AMBER = '#c27a12';   // used when a value goes over its goal

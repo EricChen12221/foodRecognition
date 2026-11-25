@@ -7,7 +7,6 @@ type Props = {
   onChoose: (containerId: string, profileId: string) => void;
 };
 
-// One card per detected container: thumbnail, title, and a row of profile chips.
 export default function ContainerProfileList({ containers, profiles, onChoose }: Props) {
   return (
     <View style={styles.list}>

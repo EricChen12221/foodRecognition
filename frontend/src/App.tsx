@@ -15,7 +15,6 @@ import {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import type { PhotoFile } from 'react-native-vision-camera';
 
 import ProfileScreen from './screens/ProfileScreen/index.tsx'
 import TrackerScreen from './screens/TrackerScreen/index.tsx'

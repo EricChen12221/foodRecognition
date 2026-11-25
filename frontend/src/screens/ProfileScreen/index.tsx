@@ -14,8 +14,6 @@ const ITEMS: { key: Section; label: string; hint: string }[] = [
   { key: 'progress', label: 'Progress', hint: 'See which goals you met' },
 ];
 
-// Goals, profiles and daily totals live in App (see useAccount) and arrive here as props.
-// This screen only keeps UI state: which section is showing and whether the menu is open.
 export default function ProfileScreen({
   goals, profiles, days,
   changeGoal, resetGoals, addProfile, changeProfile, deleteProfile, applyProfile

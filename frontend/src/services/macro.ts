@@ -75,7 +75,7 @@ async function request<T>(
 
 /** Uploads a meal photo and returns the detected containers and foods. Cancels server-side on abort. */
 export async function analyzeMeal(signal: AbortSignal, imageUri: string) {
-  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`   // a label, not a secret
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`  
 
   signal.addEventListener('abort', () => {
     request(`/cancel/${requestId}`).catch(() => {})
@@ -86,7 +86,7 @@ export async function analyzeMeal(signal: AbortSignal, imageUri: string) {
 
   return request<AnalysisResult>('/analyze', {
     body: form,
-    headers: { 'x-request-id': requestId },   // no Content-Type: fetch sets the multipart boundary
+    headers: { 'x-request-id': requestId },  
     signal,
   })
 }

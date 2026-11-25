@@ -1,4 +1,3 @@
-// src/screens/ProfileScreen/components/ProfileModal.tsx
 import React, { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View,
@@ -6,22 +5,16 @@ import {
 import type { Profile } from '../../../types';
 import { CalibrateDishFlow } from './CalibrateDishFlow';
 
-/**
- * Popup used for both adding and editing a bowl or plate profile.
- *  - profile = null  -> "Add a profile" (empty form)
- *  - profile = {...} -> "Edit profile" (filled in, with a Delete option that asks to confirm, and
- *                       a "Dish shape" section that calibrates the dish from an empty-dish photo)
- */
 export function ProfileModal({
   visible, profile, canDelete, onSave, onDelete, onClose, onCalibrated,
 }: {
   visible: boolean;
   profile: Profile | null;
-  canDelete: boolean;                                   // false when it is the only profile left
+  canDelete: boolean;                                   
   onSave: (label: string, diameterMeters: number) => void;
   onDelete: () => void;
   onClose: () => void;
-  onCalibrated?: (profile: Profile) => void;            // called with the profile that now has a shape
+  onCalibrated?: (profile: Profile) => void;            
 }) {
   const [label, setLabel] = useState('');
   const [cm, setCm] = useState('');
@@ -50,7 +43,7 @@ export function ProfileModal({
       setError('The diameter must be between 5 and 80 cm.');
       return;
     }
-    onSave(name, n / 100);   // stored in meters
+    onSave(name, n / 100);   
   };
 
   // Calibration uses the diameter that is SAVED on the server, so unsaved edits would be ignored.
@@ -75,7 +68,7 @@ export function ProfileModal({
           onCancel={() => setCalibrating(false)}
           onFinished={(updated) => {
             setCalibrating(false);
-            onCalibrated?.(updated);   // puts the new shape into the app's state
+            onCalibrated?.(updated);   
             onClose();
           }}
         />
@@ -84,7 +77,6 @@ export function ProfileModal({
           style={styles.backdrop}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          {/* tapping the dimmed area closes the popup */}
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
 
           <View style={styles.card}>
@@ -133,7 +125,6 @@ export function ProfileModal({
                   Measure the diameter of the bowl or plate. Try to be as accurate as possible.
                 </Text>
 
-                {/* dish shape: only for a profile that already exists */}
                 {profile && onCalibrated ? (
                   <View style={styles.shapeBox}>
                     <Text style={styles.label}>Dish shape</Text>

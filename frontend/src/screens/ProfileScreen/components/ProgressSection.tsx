@@ -1,10 +1,8 @@
-// src/screens/ProfileScreen/components/ProgressSection.tsx
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MACROS, MACRO_COLORS } from '../../../settings';
 import type { Goals, DayTotals } from '../../../types'
 
-// A macro counts as "met" when the day's total reaches this share of its goal.
 const MET_AT = 0.9;
 export const isMet = (value: number, goal: number) => goal > 0 && value >= goal * MET_AT;
 
@@ -17,14 +15,13 @@ const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const WEEKDAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 const pad = (n: number) => String(n).padStart(2, '0');
-/** Key used for the `days` data: "YYYY-MM-DD" (month is 0-based, like JavaScript's Date). */
 export const dayKey = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`;
 
 export function ProgressSection({
   goals, days,
 }: {
   goals: Goals;
-  days: Record<string, DayTotals>;   // "YYYY-MM-DD" -> totals for that day
+  days: Record<string, DayTotals>;   
 }) {
   const now = new Date();
   const todayKey = dayKey(now.getFullYear(), now.getMonth(), now.getDate());
@@ -34,8 +31,8 @@ export function ProgressSection({
 
   const y = cursor.getFullYear();
   const m = cursor.getMonth();
-  const leading = new Date(y, m, 1).getDay();          // blank cells before the 1st
-  const count = new Date(y, m + 1, 0).getDate();       // days in this month
+  const leading = new Date(y, m, 1).getDay();          
+  const count = new Date(y, m + 1, 0).getDate();       
 
   const cells: (number | null)[] = [
     ...Array.from({ length: leading }, () => null),

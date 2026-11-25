@@ -3,7 +3,6 @@ export type MacroRange = { estimate: Macros; low: Macros; high: Macros };
 
 export type Goals = { kcal: number; protein: number; carbs: number; fat: number };
 
-// What was actually eaten on one day (same fields as Goals)
 export type DayTotals = { kcal: number; protein: number; carbs: number; fat: number };
 
 export type Macro = 'protein' | 'carbs' | 'fat';
@@ -15,8 +14,8 @@ export type MealMacros = {
 };
 
 export type MealVolume = {
-  id: string;                   // for combined entries this is the label itself
-  count?: number;               // how many detections were combined, if you use combine_by_label
+  id: string;                   
+  count?: number;               
   volume_ml?: number | null;
   volume_ml_low?: number | null;
   volume_ml_high?: number | null;
@@ -26,7 +25,7 @@ export type Profile = {
   id: string;
   label: string;
   diameter: number;
-  shape?: {                              // present once the dish has been calibrated
+  shape?: {                              
     knotsZOverR: number[]
     depthFrac: number
     floorFrac: number
@@ -39,8 +38,8 @@ export type Profile = {
 
 export type Food = {
   id: number;
-  label: string;        // what the detector called it. This never changes.
-  newLabel?: string;    // what the user renamed it to, if they did
+  label: string;        
+  newLabel?: string;   
   box: number[];
   score: number | null;
   thumbnail: string | null;

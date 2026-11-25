@@ -4,9 +4,6 @@ import type { DayTotals, Goals, Profile, MealMacros, MealItem, SavedMeal, DailyM
  
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
  
-/** One logged day. `date` looks like "2026-10-27". */
-
-/** Thrown for any failed request. `status` lets screens react, e.g. 401 means sign in again. */
 export class ApiError extends Error {
   status: number
   constructor(message: string, status: number) {
@@ -16,7 +13,6 @@ export class ApiError extends Error {
   }
 }
  
-/** Sends a request to /api/user<path> with the saved session token. Returns the parsed JSON. */
 async function request<T>(
   path: string,
   options: { method?: string; body?: unknown; signal?: AbortSignal } = {},
@@ -27,13 +23,12 @@ async function request<T>(
   const isForm = options.body instanceof FormData
   const res = await fetch(`${BASE}/user${path}`, {
     method: options.method ?? 'GET',
-    // no Content-Type for FormData: fetch adds the multipart boundary
     headers: { ...(isForm ? {} : JSON_HEADERS), Authorization: `Bearer ${token}` },
     body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
     signal: options.signal,
   })
 
-  const data = await res.json().catch(() => null) // a failed request may not return JSON
+  const data = await res.json().catch(() => null) 
   if (!res.ok) throw new ApiError(data?.error ?? data?.detail ?? `Request failed (${res.status}).`, res.status)
   return data as T
 }

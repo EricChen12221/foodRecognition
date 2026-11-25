@@ -6,7 +6,6 @@ import { ProfileModal } from './ProfileModal';
 
 import PencilIcon from '../../../assets/PencilIcon'
 
-/** Numeric input that only saves on blur, and puts the old value back if the text is invalid. */
 function NumberField({
   label, unit, value, min, max, onCommit,
 }: {
@@ -44,8 +43,6 @@ function NumberField({
   );
 }
 
-// This screen draws the form and the popup. The parent decides what each change does
-// (here: save it through the API).
 export function EditSection({
   goals, profiles, onGoalChange, onProfileAdd, onProfileChange, onProfileDelete, onResetGoals, onCalibrated
 }: {
@@ -58,17 +55,16 @@ export function EditSection({
   onResetGoals: () => void;
   onCalibrated: (updated: Profile) => void;
 }) {
-  // `visible` and `target` are separate so the popup keeps its content while it fades out.
   const [visible, setVisible] = useState(false);
-  const [target, setTarget] = useState<Profile | null>(null);   // null = adding a new profile
+  const [target, setTarget] = useState<Profile | null>(null);   
 
   const openAdd = () => { setTarget(null); setVisible(true); };
   const openEdit = (p: Profile) => { setTarget(p); setVisible(true); };
   const close = () => setVisible(false);
 
   const calibrated = (updated: Profile) => {
-    onCalibrated?.(updated);   // parent stores the new shape
-    setTarget(updated);        // keep the popup's copy in sync (see below)
+    onCalibrated?.(updated);  
+    setTarget(updated);        
     close();
   };
 

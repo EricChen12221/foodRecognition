@@ -3,7 +3,8 @@ import { ScrollView, StyleSheet } from 'react-native';
 import type { Goals, SavedMeal } from '../../types';
 
 import { Meals } from './components/Meals';
-import { GoalCard, DEFAULT_GOALS } from './components/GoalCard';
+import { GoalCard } from './components/GoalCard';
+import { DEFAULT_GOALS } from '../../settings'
 
 export default function TrackerScreen({
   meals,

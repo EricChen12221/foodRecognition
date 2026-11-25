@@ -1,10 +1,5 @@
-// src/screens/ProfileScreen/components/CalibrateDishFlow.tsx
-//
-// Lives inside the profile popup. The camera and the Use/Retake review are CameraCapture's job.
-// This file only adds what is specific to calibrating: an optional ruler depth, the upload, a
-// "measuring" overlay, and the result.
 import React, { useState, useRef, useEffect } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CameraCapture } from '../../../shared/CameraCapture';
 import type { Profile } from '../../../types';
 import { calibrateProfile } from '../../../services/data';
@@ -13,14 +8,14 @@ export function CalibrateDishFlow({
   profile, onFinished, onCancel,
 }: {
   profile: Profile;
-  onFinished: (updated: Profile) => void;   // puts the new shape into the app's state and closes the popup
+  onFinished: (updated: Profile) => void;
   onCancel: () => void;
 }) {
   const [depthText, setDepthText] = useState('');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ profile: Profile; warnings: string[] } | null>(null);
-  const requestId = useRef(0);                       // lets us ignore a result that arrives after cancel
+  const requestId = useRef(0);                       
   const abortRef = useRef<AbortController | null>(null);
 
   // if the popup closes mid-upload, abort and don't touch state afterwards
@@ -40,10 +35,10 @@ export function CalibrateDishFlow({
         Number.isFinite(mm) && mm > 0 ? mm : undefined,
         controller.signal,
       );
-      if (myId !== requestId.current) return;        // cancelled
+      if (myId !== requestId.current) return;        
       setResult(res);
     } catch (e) {
-      if (myId !== requestId.current) return;        // cancelled, so no error message
+      if (myId !== requestId.current) return;        
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (myId === requestId.current) setWorking(false);
@@ -51,12 +46,11 @@ export function CalibrateDishFlow({
   };
 
   const cancelMeasuring = () => {
-    requestId.current++;                             // invalidates the in-flight call
+    requestId.current++;                             
     abortRef.current?.abort();
-    setWorking(false);                               // back to the review screen
+    setWorking(false);                               
   };
 
-  // result
   if (result) {
     const saved = result.profile;
     const mm = saved.shape ? Math.round(saved.shape.depthFrac * saved.diameter * 500) : null;
@@ -111,7 +105,6 @@ export function CalibrateDishFlow({
         }
       />
 
-      {/* covers the review screen while the photo is being measured, so nothing can be tapped */}
       {working ? (
         <View style={[StyleSheet.absoluteFill, styles.light, styles.center]}>
           <ActivityIndicator size="large" />

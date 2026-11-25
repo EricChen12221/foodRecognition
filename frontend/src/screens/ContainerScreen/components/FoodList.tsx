@@ -1,4 +1,3 @@
-// src/screens/ContainerScreen/components/FoodList.tsx
 import React, { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import PencilIcon from '../../../assets/PencilIcon'; 

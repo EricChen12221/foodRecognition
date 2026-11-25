@@ -1,4 +1,3 @@
-// src/screens/ProfileScreen/components/SideMenu.tsx
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -15,7 +14,7 @@ export function SideMenu<T extends string>({
   onSelect: (key: T) => void;
   onClose: () => void;
 }) {
-  const progress = useRef(new Animated.Value(0)).current;   // 0 = closed, 1 = open
+  const progress = useRef(new Animated.Value(0)).current;   
   const [mounted, setMounted] = useState(open);
 
   useEffect(() => {
@@ -25,7 +24,7 @@ export function SideMenu<T extends string>({
       duration: 220,
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished && !open) setMounted(false);   // stop covering the screen once it's closed
+      if (finished && !open) setMounted(false);   
     });
   }, [open, progress]);
 

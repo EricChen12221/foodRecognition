@@ -1,6 +1,5 @@
 import { type Macro, Profile, Goals  } from './types'
 
-// src/settings.ts
 export const MACROS: { key: Macro; label: string }[] = [
   { key: 'protein', label: 'Protein' },
   { key: 'carbs', label: 'Carbs' },
