@@ -1,17 +1,6 @@
 import mongoose from 'mongoose'
 import User from '../models/user'
- 
-type ProfileShape = {
-  knotsZOverR: number[]
-  depthFrac?: number
-  floorFrac?: number
-  fitRms?: number
-  scaleFactor?: number
-  nPhotos?: number
-  calibratedAt?: Date
-}
-
-type ProfileJson = { id: string; label: string; diameter: number; shape?: ProfileShape }
+import type { ProfileJson } from '../types'
  
 const profilesOf = (user: { toJSON: () => unknown }) => (user.toJSON() as any).profiles as ProfileJson[]
  

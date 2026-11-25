@@ -1,5 +1,4 @@
 import express, { Router } from 'express';
-import multer from 'multer';
 import { macrosForMeal } from '../helpers/foods';
 import { PythonServiceError } from '../helpers/pythonClient';
 import { python } from '../helpers/python';
