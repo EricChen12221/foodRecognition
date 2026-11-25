@@ -10,7 +10,8 @@ import {
   useColorScheme,
   View,
   TouchableOpacity,
-  Button
+  Button,
+  ViewStyle
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -19,8 +20,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import ProfileScreen from './screens/ProfileScreen/index.tsx'
 import TrackerScreen from './screens/TrackerScreen/index.tsx'
 import ContainerScreen from './screens/ContainerScreen'
-
-import { floatingTabBar } from './tabBarStyle';
 
 import { TrackerIcon, ProfileIcon } from './assets/TabIcons';
 import CameraIcon from './assets/CameraIcon.tsx'
@@ -263,5 +262,24 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
 });
+
+const floatingTabBar: ViewStyle = {
+  position: 'absolute',
+  bottom: 25,          
+  marginLeft: '5%',
+  width: '90%',
+  height: 64,
+  alignSelf: 'center',
+  borderRadius: 32,    
+  backgroundColor: 'white', 
+  borderTopWidth: 0,   
+  paddingTop: 0,
+  paddingBottom: 0,
+
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.2,
+  shadowRadius: 10,
+};
 
 export default App;

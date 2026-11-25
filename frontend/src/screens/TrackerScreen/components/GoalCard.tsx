@@ -4,7 +4,7 @@ import type { Goals, SavedMeal } from '../../../types';
 import { DEFAULT_GOALS } from '../../../settings'
 
 const GREEN = '#14634b';
-const AMBER = '#c27a12';   // used when a value goes over its goal
+const AMBER = '#c27a12';
 
 type Key = keyof Goals;
 
