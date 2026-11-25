@@ -160,7 +160,19 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
       contentContainerStyle={styles.screenContent}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.title}>Log meal</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Log meal</Text>
+        <Pressable
+          onPress={handleCancel}
+          disabled={submitting}
+          hitSlop={12}
+          style={[styles.closeButton, submitting && styles.primaryDisabled]}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        >
+          <Text style={styles.closeText}>✕</Text>
+        </Pressable>
+      </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Plateware profiles</Text>
@@ -201,6 +213,15 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
       >
         <Text style={styles.primaryText}>{submitting ? 'Estimating…' : 'Estimate portions'}</Text>
       </Pressable>
+
+      <Pressable
+        style={[styles.secondary, { alignSelf: 'center' }]}
+        onPress={handleCancel}
+        disabled={submitting}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.secondaryText, submitting && styles.primaryDisabled]}>Cancel</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -208,6 +229,9 @@ export default function ContainerScreen({ path, onCancel, onLogged, profiles = D
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
   hint: { fontSize: 14, color: '#666', textAlign: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  closeButton: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#e6e9e4' },
+  closeText: { fontSize: 16, color: '#1b2420', fontWeight: '600' },
   primary: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8, backgroundColor: '#14634b' },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   primaryDisabled: { opacity: 0.4 },
