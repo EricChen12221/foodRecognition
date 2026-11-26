@@ -36,19 +36,3 @@ def calculate_food_volume(evaluation, food_mask=None, method="area", max_area_ra
         return 0.0
     valid &= area < max_area_ratio * np.median(area[valid])   # reject depth jumps
     return float(np.sum(h_map[valid] * area[valid]))
-
-
-def calculate_volumes(reconstructions):
-    """reconstructions: {container_key: reconstruction}. Each food dict needs
-    'label' and 'eval' (output of evaluate_food_container for ITS container)."""
-    foods = []
-    for key, reconstruction in reconstructions.items():
-        if key == "None":      # food with no container has no reference surface
-            continue
-        for food in reconstruction["foods"]:
-            vol_m3 = calculate_food_volume(food["eval"], food.get("mask"))
-            food["volume_m3"] = vol_m3
-            food["volume_ml"] = vol_m3 * 1_000_000
-            foods.append({"container": key, "food_label": food["label"],
-                          "volume_ml": food["volume_ml"]})
-    return foods

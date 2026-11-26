@@ -164,10 +164,10 @@ def measure_meal(depth_map, focal_px, containers, food_masks, food_labels=None,
 
     
     return {
-        "foods": combine_by_label(assigned),                  # one dict per input food, original order
+        "foods": combine_by_label(assigned),                  
         "unassigned": [f for f in assigned if f["container"] == "None"],
-        "dropped": dropped,                 # duplicate / merged masks removed before measuring
-        "scale_info": info,                 # scale, source, rel_uncertainty
+        "dropped": dropped,                
+        "scale_info": info,                 
         "depth": scaled_depth,
         "reconstructions": reconstructions,
     }

@@ -2,18 +2,6 @@ import numpy as np
 from profile_estimations.container_estimation import reconstruct_dish
 PLATE_DIAMETER_M = 0.26
 
-
-def estimate_depth_scale(depth_map, ellipse, container_mask, food_mask, focal_length,
-                         known_diameter_m=PLATE_DIAMETER_M):
-    rec = reconstruct_dish(depth_map, ellipse, container_mask, food_mask, focal_length)
-    return (known_diameter_m / 2.0) / rec["profile"]["rim_radius"]
-
-
-def check_scale_from_ellipse(ellipse_full_axes_px, focal_px, known_diameter_m=PLATE_DIAMETER_M):
-    d_px = max(ellipse_full_axes_px)
-    return focal_px * known_diameter_m / d_px
-
-
 # Scale without a hard-coded size: container-class prior + optional user value
 
 # (typical, min, max) OUTER diameter in meters. Approximate figures for common
@@ -59,10 +47,3 @@ def calibrate(depth_map, ellipse, container_mask, food_mask, focal_length,
     rec = reconstruct_dish(depth_map, ellipse, container_mask, food_mask, focal_length)
     info = choose_scale(rec["profile"]["rim_radius"], container_class, known_diameter_m)
     return depth_map * info["scale"], info
-
-
-def add_volume_ranges(foods, info):
-    """foods: output of calculate_volumes. Adds volume_ml_low / volume_ml_high."""
-    for f in foods:
-        f["volume_ml_low"], f["volume_ml_high"] = volume_range(f["volume_ml"], info["rel_uncertainty"])
-    return foods

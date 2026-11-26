@@ -312,9 +312,6 @@ def reconstruct_dish(depth_map, ellipse, container_mask, food_mask, focal_length
     print("table-based bowl height:", tb)
 
     known = None
-    # known = None
-    # if tb and tb["inlier_frac"] > 0.5 and tb["tilt_deg"] < 10 and tb["depth"] > 0:
-    #     known = float(np.clip(tb["depth"] / R0, 0.05, 0.9))
 
     profile = fit_cap_profile(dish_points_cam, rim_3d[inliers], normal, center0, R0,
                               known_depth_frac=known)
@@ -347,7 +344,7 @@ def plot_profile(dish_points, profile):
     r_fit = np.linspace(0, profile["rim_radius"], 300)
     z_fit = evaluate_profile(profile, r_fit)
 
-    fig, ax = plt.subplots(1, 3, figsize=(15, 4))
+    _, ax = plt.subplots(1, 3, figsize=(15, 4))
 
     ax[0].scatter(r, z, s=2, alpha=0.25)
     ax[0].plot(r_fit, z_fit, "r", linewidth=3)
